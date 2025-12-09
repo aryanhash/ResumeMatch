@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - TOGETHER_API_KEY=${TOGETHER_API_KEY}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+    volumes:
+      - ./backend:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    depends_on:
+      - backend
+
+  # Kestra Orchestrator
+  kestra:
+    image: kestra/kestra:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./kestra:/app/flows
+      - kestra-data:/app/.kestra
+    environment:
+      - KESTRA_CONFIGURATION_FILE=/app/flows/kestra-config.yml
+    command: server standalone
+
+volumes:
+  kestra-data:
+
