@@ -1,10 +1,18 @@
+<<<<<<< HEAD
 # 🚀 AutoApply AI
+=======
+# 🚀 ResumeMatch AI
+>>>>>>> 8d4de32 (Add local README)
 
 > **AI Multi-Agent System for Job-Specific Resume Optimization & ATS Scoring**
 
 Transform your resume into interview invites with AI-powered optimization, ATS scoring, and personalized insights.
 
+<<<<<<< HEAD
 ![AutoApply AI Banner](https://img.shields.io/badge/AI-Powered-8b5cf6?style=for-the-badge&logo=sparkles)
+=======
+![ResumeMatch AI Banner](https://img.shields.io/badge/AI-Powered-8b5cf6?style=for-the-badge&logo=sparkles)
+>>>>>>> 8d4de32 (Add local README)
 ![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=for-the-badge&logo=next.js)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?style=for-the-badge&logo=fastapi)
@@ -18,7 +26,11 @@ Transform your resume into interview invites with AI-powered optimization, ATS s
 | **Together AI** | Resume rewriting, ATS scoring, cover letter, gap analysis |
 | **OUMI** | Fine-tunes a lightweight ATS scoring model for better precision |
 | **Vercel** | Hosts the Next.js frontend |
+<<<<<<< HEAD
 | **CodeRabbit** | Automated PR reviews to maintain quality |
+=======
+| **Cline CLI Bot** | Automated PR reviews to maintain quality |
+>>>>>>> 8d4de32 (Add local README)
 
 ## 🏗️ Architecture
 
@@ -168,9 +180,14 @@ cd frontend
 vercel
 ```
 
+<<<<<<< HEAD
 ### 6️⃣ CodeRabbit — Automated Code Review
 
 Install the CodeRabbit GitHub App for:
+=======
+### 6️⃣ Cline Cli bot — Automated Code Review
+
+>>>>>>> 8d4de32 (Add local README)
 - PR feedback
 - Security warnings
 - Best practice suggestions
@@ -330,7 +347,10 @@ vercel
 - [Together AI](https://together.ai) - LLM Infrastructure
 - [OUMI](https://oumi.ai) - Model Fine-tuning
 - [Vercel](https://vercel.com) - Frontend Hosting
+<<<<<<< HEAD
 - [CodeRabbit](https://coderabbit.ai) - Code Review
+=======
+>>>>>>> 8d4de32 (Add local README)
 
 ---
 
