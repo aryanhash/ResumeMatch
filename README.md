@@ -332,8 +332,21 @@ vercel
 
 ---
 
+## 👥 Team - AI Assemble Hackathon 2025
+
+| Member | Role | GitHub |
+|--------|------|--------|
+| Ravi Shankar | [Frontend + AI] | [@RaviShankar-18](https://github.com/RaviShankar-18) |
+| Aryan Raj | [Backend + AI] | [@aryanhash](https://github.com/aryanhash) |
+| [Roshan Kumar] | [Backend + AI] | [@username] |
+
+**Hackathon**: AI Assemble 2025  
+**Submission Date**: December 2025
+
 <p align="center">
   Built with ❤️ for job seekers everywhere
   <br>
   <strong>Apply Smarter, Not Blindly</strong>
 </p>
+
+
