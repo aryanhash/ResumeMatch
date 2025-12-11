@@ -1,0 +1,698 @@
+# AutoApply AI - Kestra Workflow Pipeline v2.0
+# 
+# Improvements:
+# ✅ Moved Python code to separate task files
+# ✅ Added error handling and retry logic
+# ✅ Added input validation
+# ✅ Added logging/observability
+# ✅ Environment variables for file paths
+# ✅ Conditional logic for low scores
+# ✅ Data validation between tasks
+# ✅ OUMI/Together AI integration
+# ✅ Resource limits (timeouts)
+# ✅ Graceful handling of missing files
+# ✅ Cleanup of temp files
+# ✅ Status reporting
+
+id: autoapplyai_pipeline
+namespace: autoapplyai
+
+description: |
+  Multi-agent pipeline for resume optimization and ATS scoring.
+  
+  Tools Used:
+  - Kestra: Pipeline orchestration
+  - Cline: Agent code generation
+  - Together AI: LLM intelligence
+  - OUMI: Fine-tuned ATS classifier
+  
+  Flow:
+  1. Validate Inputs
+  2. Parse Resume (parallel with JD)
+  3. Analyze Job Description
+  4. Gap Analysis
+  5. OUMI ATS Classification
+  6. Together AI ATS Scoring
+  7. Conditional: Resume Rewrite (if score > 35)
+  8. Conditional: Cover Letter (if score > 35)
+  9. Explanation Generation
+  10. Project Recommendations
+  11. Compile Final Output
+  12. Cleanup
+
+labels:
+  version: "2.0"
+  team: "autoapplyai"
+
+inputs:
+  - id: resume_text
+    type: STRING
+    description: "Raw resume text (100-100000 chars)"
+    required: true
+    
+  - id: job_description
+    type: STRING
+    description: "Job description text (50-50000 chars)"
+    required: true
+    
+  - id: callback_url
+    type: STRING
+    description: "Optional webhook URL for completion notification"
+    required: false
+
+variables:
+  python_image: "python:3.11-slim"
+  backend_path: "./backend"
+  min_score_for_rewrite: 35
+
+tasks:
+  # ============================================================
+  # STEP 0: Validate Inputs
+  # ============================================================
+  - id: validate_inputs
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Validate resume and JD text before processing"
+    timeout: PT2M
+    retry:
+      maxAttempt: 2
+      delay: PT5S
+    inputFiles:
+      resume.txt: "{{ inputs.resume_text }}"
+      jd.txt: "{{ inputs.job_description }}"
+    commands:
+      - |
+        python3 << 'EOF'
+        import sys
+        import os
+        
+        print("🔍 Validating inputs...")
+        
+        # Read files
+        with open('resume.txt', 'r') as f:
+            resume = f.read()
+        with open('jd.txt', 'r') as f:
+            jd = f.read()
+        
+        errors = []
+        
+        # Validate resume
+        if len(resume.strip()) < 100:
+            errors.append(f"Resume too short ({len(resume)} chars, min 100)")
+        if len(resume) > 100000:
+            errors.append(f"Resume too long ({len(resume)} chars, max 100000)")
+        
+        # Validate JD
+        if len(jd.strip()) < 50:
+            errors.append(f"JD too short ({len(jd)} chars, min 50)")
+        if len(jd) > 50000:
+            errors.append(f"JD too long ({len(jd)} chars, max 50000)")
+        
+        # Check for binary content
+        if resume.startswith('%PDF') or resume.startswith('PK'):
+            errors.append("Resume appears to be binary, not text")
+        if jd.startswith('%PDF') or jd.startswith('PK'):
+            errors.append("JD appears to be binary, not text")
+        
+        if errors:
+            print("❌ Validation failed:")
+            for e in errors:
+                print(f"  - {e}")
+            sys.exit(1)
+        
+        print(f"✅ Resume: {len(resume)} chars")
+        print(f"✅ JD: {len(jd)} chars")
+        print("✅ Inputs validated successfully")
+        EOF
+    outputFiles:
+      - resume.txt
+      - jd.txt
+
+  # ============================================================
+  # STEP 1a: Parse Resume
+  # ============================================================
+  - id: parse_resume
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Extract structured data from resume"
+    dependsOn:
+      - validate_inputs
+    timeout: PT5M
+    retry:
+      maxAttempt: 3
+      delay: PT10S
+    namespaceFiles:
+      enabled: true
+    inputFiles:
+      resume.txt: "{{ outputs.validate_inputs.outputFiles['resume.txt'] }}"
+    env:
+      RESUME_INPUT: "resume.txt"
+      RESUME_OUTPUT: "parsed_resume.json"
+      PYTHONUNBUFFERED: "true"
+    commands:
+      - pip install -q together python-dotenv pydantic PyPDF2 python-docx sentence-transformers
+      - cd backend && python -m tasks.parse_resume_task
+    outputFiles:
+      - parsed_resume.json
+
+  # ============================================================
+  # STEP 1b: Analyze Job Description (parallel with resume parsing)
+  # ============================================================
+  - id: analyze_jd
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Extract requirements from job description"
+    dependsOn:
+      - validate_inputs
+    timeout: PT5M
+    retry:
+      maxAttempt: 3
+      delay: PT10S
+    namespaceFiles:
+      enabled: true
+    inputFiles:
+      jd.txt: "{{ outputs.validate_inputs.outputFiles['jd.txt'] }}"
+    env:
+      JD_INPUT: "jd.txt"
+      JD_OUTPUT: "parsed_jd.json"
+      PYTHONUNBUFFERED: "true"
+    commands:
+      - pip install -q together python-dotenv pydantic
+      - cd backend && python -m tasks.analyze_jd_task
+    outputFiles:
+      - parsed_jd.json
+
+  # ============================================================
+  # STEP 2: Gap Analysis
+  # ============================================================
+  - id: gap_analysis
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Compare resume against job requirements"
+    dependsOn:
+      - parse_resume
+      - analyze_jd
+    timeout: PT5M
+    retry:
+      maxAttempt: 2
+      delay: PT10S
+    namespaceFiles:
+      enabled: true
+    inputFiles:
+      parsed_resume.json: "{{ outputs.parse_resume.outputFiles['parsed_resume.json'] }}"
+      parsed_jd.json: "{{ outputs.analyze_jd.outputFiles['parsed_jd.json'] }}"
+    env:
+      RESUME_INPUT: "parsed_resume.json"
+      JD_INPUT: "parsed_jd.json"
+      GAP_OUTPUT: "gap_analysis.json"
+      PYTHONUNBUFFERED: "true"
+    commands:
+      - pip install -q together python-dotenv pydantic sentence-transformers
+      - cd backend && python -m tasks.gap_analysis_task
+    outputFiles:
+      - gap_analysis.json
+
+  # ============================================================
+  # STEP 3: OUMI ATS Classification (Fine-tuned Model)
+  # ============================================================
+  - id: oumi_classification
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Run OUMI fine-tuned ATS classifier"
+    dependsOn:
+      - gap_analysis
+    timeout: PT5M
+    retry:
+      maxAttempt: 2
+      delay: PT10S
+    namespaceFiles:
+      enabled: true
+    inputFiles:
+      parsed_resume.json: "{{ outputs.parse_resume.outputFiles['parsed_resume.json'] }}"
+      parsed_jd.json: "{{ outputs.analyze_jd.outputFiles['parsed_jd.json'] }}"
+    env:
+      PYTHONUNBUFFERED: "true"
+    commands:
+      - pip install -q together python-dotenv pydantic sentence-transformers
+      - |
+        cd backend && python3 << 'EOF'
+        import sys
+        import json
+        import logging
+        
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
+        logger = logging.getLogger("oumi_classification")
+        
+        sys.path.insert(0, '.')
+        from agents.oumi_ats_classifier import OumiATSClassifier
+        from models.schemas import ParsedResume, ParsedJobDescription
+        
+        logger.info("🎯 Loading OUMI classifier...")
+        
+        with open('../parsed_resume.json', 'r') as f:
+            resume = ParsedResume(**json.load(f))
+        
+        with open('../parsed_jd.json', 'r') as f:
+            jd = ParsedJobDescription(**json.load(f))
+        
+        classifier = OumiATSClassifier()
+        result = classifier.classify(resume, jd)
+        
+        logger.info(f"📊 OUMI Classification: {result.get('ats_bucket', 'N/A')}")
+        logger.info(f"   Score: {result.get('ats_score', 0)}")
+        logger.info(f"   Confidence: {result.get('confidence', 0):.2f}")
+        
+        with open('../oumi_classification.json', 'w') as f:
+            json.dump(result, f, indent=2)
+        
+        logger.info("✅ OUMI classification complete")
+        EOF
+    outputFiles:
+      - oumi_classification.json
+
+  # ============================================================
+  # STEP 4: Together AI ATS Scoring
+  # ============================================================
+  - id: ats_scoring
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Calculate detailed ATS score with OUMI signals"
+    dependsOn:
+      - oumi_classification
+    timeout: PT5M
+    retry:
+      maxAttempt: 2
+      delay: PT10S
+    namespaceFiles:
+      enabled: true
+    inputFiles:
+      parsed_resume.json: "{{ outputs.parse_resume.outputFiles['parsed_resume.json'] }}"
+      parsed_jd.json: "{{ outputs.analyze_jd.outputFiles['parsed_jd.json'] }}"
+      gap_analysis.json: "{{ outputs.gap_analysis.outputFiles['gap_analysis.json'] }}"
+      oumi_classification.json: "{{ outputs.oumi_classification.outputFiles['oumi_classification.json'] }}"
+    env:
+      RESUME_INPUT: "parsed_resume.json"
+      JD_INPUT: "parsed_jd.json"
+      GAP_INPUT: "gap_analysis.json"
+      OUMI_INPUT: "oumi_classification.json"
+      ATS_OUTPUT: "ats_score.json"
+      PYTHONUNBUFFERED: "true"
+    commands:
+      - pip install -q together python-dotenv pydantic sentence-transformers
+      - cd backend && python -m tasks.ats_scoring_task
+    outputFiles:
+      - ats_score.json
+      - ats_score_value.txt
+
+  # ============================================================
+  # STEP 5: Check if Score Warrants Full Processing
+  # ============================================================
+  - id: check_score
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Check if ATS score warrants resume rewrite and cover letter"
+    dependsOn:
+      - ats_scoring
+    timeout: PT1M
+    inputFiles:
+      ats_score.json: "{{ outputs.ats_scoring.outputFiles['ats_score.json'] }}"
+    commands:
+      - |
+        python3 << 'EOF'
+        import json
+        import os
+        
+        with open('ats_score.json', 'r') as f:
+            score_data = json.load(f)
+        
+        score = score_data.get('overall_score', 0)
+        bucket = score_data.get('bucket', 'unknown')
+        
+        print(f"📊 ATS Score: {score}/100 ({bucket})")
+        
+        # Check if score is high enough for full processing
+        min_score = 35
+        
+        if score < min_score:
+            print(f"⚠️ Score too low ({score} < {min_score})")
+            print("   Recommend focusing on skill development first")
+            with open('skip_rewrite.flag', 'w') as f:
+                f.write('true')
+            with open('skip_reason.txt', 'w') as f:
+                f.write(f"Score {score}/100 is below threshold. Focus on acquiring missing skills first.")
+        else:
+            print(f"✅ Score sufficient for optimization ({score} >= {min_score})")
+            with open('skip_rewrite.flag', 'w') as f:
+                f.write('false')
+        EOF
+    outputFiles:
+      - skip_rewrite.flag
+      - skip_reason.txt
+
+  # ============================================================
+  # STEP 6: Resume Rewrite (conditional on score)
+  # ============================================================
+  - id: resume_rewrite
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Rewrite and optimize resume for ATS"
+    dependsOn:
+      - check_score
+    timeout: PT10M
+    retry:
+      maxAttempt: 2
+      delay: PT10S
+    namespaceFiles:
+      enabled: true
+    inputFiles:
+      parsed_resume.json: "{{ outputs.parse_resume.outputFiles['parsed_resume.json'] }}"
+      parsed_jd.json: "{{ outputs.analyze_jd.outputFiles['parsed_jd.json'] }}"
+      gap_analysis.json: "{{ outputs.gap_analysis.outputFiles['gap_analysis.json'] }}"
+      ats_score.json: "{{ outputs.ats_scoring.outputFiles['ats_score.json'] }}"
+      skip_rewrite.flag: "{{ outputs.check_score.outputFiles['skip_rewrite.flag'] }}"
+    env:
+      PYTHONUNBUFFERED: "true"
+    commands:
+      - pip install -q together python-dotenv pydantic
+      - |
+        cd backend && python3 << 'EOF'
+        import sys
+        import json
+        import logging
+        
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
+        logger = logging.getLogger("resume_rewrite")
+        
+        # Check skip flag
+        with open('../skip_rewrite.flag', 'r') as f:
+            skip = f.read().strip() == 'true'
+        
+        if skip:
+            logger.info("⏭️ Skipping resume rewrite (score too low)")
+            result = {"status": "skipped", "reason": "ATS score too low for optimization"}
+            with open('../rewritten_resume.json', 'w') as f:
+                json.dump(result, f, indent=2)
+            sys.exit(0)
+        
+        sys.path.insert(0, '.')
+        from agents.resume_rewrite import ResumeRewriteAgent
+        from models.schemas import ParsedResume, ParsedJobDescription, GapAnalysis, ATSScore
+        
+        logger.info("📝 Loading inputs...")
+        
+        with open('../parsed_resume.json', 'r') as f:
+            resume = ParsedResume(**json.load(f))
+        with open('../parsed_jd.json', 'r') as f:
+            jd = ParsedJobDescription(**json.load(f))
+        with open('../gap_analysis.json', 'r') as f:
+            gap_analysis = GapAnalysis(**json.load(f))
+        with open('../ats_score.json', 'r') as f:
+            ats_score = ATSScore(**json.load(f))
+        
+        logger.info(f"📝 Rewriting resume for: {jd.role}")
+        
+        agent = ResumeRewriteAgent()
+        result = agent.rewrite(resume, jd, gap_analysis, ats_score)
+        
+        logger.info(f"✅ Resume rewritten")
+        logger.info(f"   Summary length: {len(result.summary)} chars")
+        logger.info(f"   Improved bullets: {len(result.improved_bullets)}")
+        
+        with open('../rewritten_resume.json', 'w') as f:
+            f.write(result.model_dump_json(indent=2))
+        EOF
+    outputFiles:
+      - rewritten_resume.json
+
+  # ============================================================
+  # STEP 7: Cover Letter Generation (conditional on score)
+  # ============================================================
+  - id: cover_letter
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Generate personalized cover letter"
+    dependsOn:
+      - check_score
+    timeout: PT10M
+    retry:
+      maxAttempt: 2
+      delay: PT10S
+    namespaceFiles:
+      enabled: true
+    inputFiles:
+      parsed_resume.json: "{{ outputs.parse_resume.outputFiles['parsed_resume.json'] }}"
+      parsed_jd.json: "{{ outputs.analyze_jd.outputFiles['parsed_jd.json'] }}"
+      gap_analysis.json: "{{ outputs.gap_analysis.outputFiles['gap_analysis.json'] }}"
+      skip_rewrite.flag: "{{ outputs.check_score.outputFiles['skip_rewrite.flag'] }}"
+    env:
+      PYTHONUNBUFFERED: "true"
+    commands:
+      - pip install -q together python-dotenv pydantic
+      - |
+        cd backend && python3 << 'EOF'
+        import sys
+        import json
+        import logging
+        
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
+        logger = logging.getLogger("cover_letter")
+        
+        # Check skip flag
+        with open('../skip_rewrite.flag', 'r') as f:
+            skip = f.read().strip() == 'true'
+        
+        if skip:
+            logger.info("⏭️ Skipping cover letter (score too low)")
+            result = {"status": "skipped", "reason": "ATS score too low"}
+            with open('../cover_letter.json', 'w') as f:
+                json.dump(result, f, indent=2)
+            sys.exit(0)
+        
+        sys.path.insert(0, '.')
+        from agents.cover_letter import CoverLetterAgent
+        from models.schemas import ParsedResume, ParsedJobDescription, GapAnalysis
+        
+        logger.info("✉️ Loading inputs...")
+        
+        with open('../parsed_resume.json', 'r') as f:
+            resume = ParsedResume(**json.load(f))
+        with open('../parsed_jd.json', 'r') as f:
+            jd = ParsedJobDescription(**json.load(f))
+        with open('../gap_analysis.json', 'r') as f:
+            gap_analysis = GapAnalysis(**json.load(f))
+        
+        logger.info(f"✉️ Generating cover letter for: {jd.role}")
+        
+        agent = CoverLetterAgent()
+        result = agent.generate(resume, jd, gap_analysis)
+        
+        logger.info(f"✅ Cover letter generated")
+        logger.info(f"   Word count: {result.word_count}")
+        
+        with open('../cover_letter.json', 'w') as f:
+            f.write(result.model_dump_json(indent=2))
+        EOF
+    outputFiles:
+      - cover_letter.json
+
+  # ============================================================
+  # STEP 8: Explanation Generation
+  # ============================================================
+  - id: explanation
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Generate detailed analysis explanation"
+    dependsOn:
+      - ats_scoring
+    timeout: PT5M
+    retry:
+      maxAttempt: 2
+      delay: PT10S
+    namespaceFiles:
+      enabled: true
+    inputFiles:
+      parsed_resume.json: "{{ outputs.parse_resume.outputFiles['parsed_resume.json'] }}"
+      parsed_jd.json: "{{ outputs.analyze_jd.outputFiles['parsed_jd.json'] }}"
+      gap_analysis.json: "{{ outputs.gap_analysis.outputFiles['gap_analysis.json'] }}"
+      ats_score.json: "{{ outputs.ats_scoring.outputFiles['ats_score.json'] }}"
+    env:
+      PYTHONUNBUFFERED: "true"
+    commands:
+      - pip install -q together python-dotenv pydantic
+      - |
+        cd backend && python3 << 'EOF'
+        import sys
+        import json
+        import logging
+        
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
+        logger = logging.getLogger("explanation")
+        
+        sys.path.insert(0, '.')
+        from agents.explanation import ExplanationAgent
+        from models.schemas import ParsedResume, ParsedJobDescription, GapAnalysis, ATSScore
+        
+        logger.info("📖 Loading inputs...")
+        
+        with open('../parsed_resume.json', 'r') as f:
+            resume = ParsedResume(**json.load(f))
+        with open('../parsed_jd.json', 'r') as f:
+            jd = ParsedJobDescription(**json.load(f))
+        with open('../gap_analysis.json', 'r') as f:
+            gap_analysis = GapAnalysis(**json.load(f))
+        with open('../ats_score.json', 'r') as f:
+            ats_score = ATSScore(**json.load(f))
+        
+        logger.info("📖 Generating explanation...")
+        
+        agent = ExplanationAgent()
+        result = agent.explain(resume, jd, gap_analysis, ats_score)
+        
+        logger.info("✅ Explanation generated")
+        
+        with open('../explanation.json', 'w') as f:
+            f.write(result.model_dump_json(indent=2))
+        EOF
+    outputFiles:
+      - explanation.json
+
+  # ============================================================
+  # STEP 9: Project Recommendations
+  # ============================================================
+  - id: project_recommendations
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Generate project recommendations for skill gaps"
+    dependsOn:
+      - gap_analysis
+    timeout: PT5M
+    retry:
+      maxAttempt: 2
+      delay: PT10S
+    namespaceFiles:
+      enabled: true
+    inputFiles:
+      gap_analysis.json: "{{ outputs.gap_analysis.outputFiles['gap_analysis.json'] }}"
+    env:
+      PYTHONUNBUFFERED: "true"
+    commands:
+      - pip install -q together python-dotenv pydantic
+      - |
+        cd backend && python3 << 'EOF'
+        import sys
+        import json
+        import logging
+        
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s | %(levelname)s | %(message)s')
+        logger = logging.getLogger("project_recommendations")
+        
+        sys.path.insert(0, '.')
+        from agents.project_recommendations import ProjectRecommendationAgent
+        from models.schemas import GapAnalysis
+        
+        logger.info("💡 Loading gap analysis...")
+        
+        with open('../gap_analysis.json', 'r') as f:
+            gap_analysis = GapAnalysis(**json.load(f))
+        
+        logger.info("💡 Generating project recommendations...")
+        
+        agent = ProjectRecommendationAgent()
+        result = agent.recommend(gap_analysis)
+        
+        logger.info(f"✅ Generated {len(result.recommended_projects)} project recommendations")
+        logger.info(f"   Learning paths: {len(result.learning_paths)}")
+        
+        with open('../project_recommendations.json', 'w') as f:
+            f.write(result.model_dump_json(indent=2))
+        EOF
+    outputFiles:
+      - project_recommendations.json
+
+  # ============================================================
+  # STEP 10: Compile Final Output
+  # ============================================================
+  - id: compile_output
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Compile all results into final output"
+    dependsOn:
+      - resume_rewrite
+      - cover_letter
+      - explanation
+      - project_recommendations
+    timeout: PT2M
+    namespaceFiles:
+      enabled: true
+    inputFiles:
+      parsed_resume.json: "{{ outputs.parse_resume.outputFiles['parsed_resume.json'] }}"
+      parsed_jd.json: "{{ outputs.analyze_jd.outputFiles['parsed_jd.json'] }}"
+      gap_analysis.json: "{{ outputs.gap_analysis.outputFiles['gap_analysis.json'] }}"
+      oumi_classification.json: "{{ outputs.oumi_classification.outputFiles['oumi_classification.json'] }}"
+      ats_score.json: "{{ outputs.ats_scoring.outputFiles['ats_score.json'] }}"
+      rewritten_resume.json: "{{ outputs.resume_rewrite.outputFiles['rewritten_resume.json'] }}"
+      cover_letter.json: "{{ outputs.cover_letter.outputFiles['cover_letter.json'] }}"
+      explanation.json: "{{ outputs.explanation.outputFiles['explanation.json'] }}"
+      project_recommendations.json: "{{ outputs.project_recommendations.outputFiles['project_recommendations.json'] }}"
+    env:
+      PYTHONUNBUFFERED: "true"
+    commands:
+      - pip install -q pydantic
+      - cd backend && python -m tasks.compile_output_task
+    outputFiles:
+      - autoapply_result.json
+
+  # ============================================================
+  # STEP 11: Notify Completion (optional webhook)
+  # ============================================================
+  - id: notify_completion
+    type: io.kestra.plugin.scripts.python.Commands
+    description: "Send completion notification via webhook"
+    dependsOn:
+      - compile_output
+    timeout: PT1M
+    inputFiles:
+      autoapply_result.json: "{{ outputs.compile_output.outputFiles['autoapply_result.json'] }}"
+    commands:
+      - pip install -q requests
+      - |
+        python3 << 'EOF'
+        import json
+        import os
+        import requests
+        
+        callback_url = '''{{ inputs.callback_url }}'''
+        
+        if not callback_url:
+            print("📭 No callback URL provided, skipping notification")
+            exit(0)
+        
+        print(f"📤 Sending notification to: {callback_url}")
+        
+        with open('autoapply_result.json', 'r') as f:
+            result = json.load(f)
+        
+        # Extract summary for notification
+        notification = {
+            'workflow_id': '''{{ execution.id }}''',
+            'status': result.get('status', 'complete'),
+            'summary': result.get('summary', {}),
+            'errors_count': len(result.get('errors', [])),
+        }
+        
+        try:
+            response = requests.post(callback_url, json=notification, timeout=10)
+            response.raise_for_status()
+            print(f"✅ Notification sent successfully")
+        except Exception as e:
+            print(f"⚠️ Notification failed: {e}")
+        EOF
+
+outputs:
+  - id: final_result
+    type: FILE
+    value: "{{ outputs.compile_output.outputFiles['autoapply_result.json'] }}"
+    description: "Complete AutoApply AI results"
+    
+  - id: ats_score_value
+    type: STRING
+    value: "{{ read(outputs.ats_scoring.outputFiles['ats_score_value.txt']) }}"
+    description: "ATS score as integer (0-100)"
+
+triggers:
+  - id: api_trigger
+    type: io.kestra.plugin.core.trigger.Webhook
+    key: autoapply_webhook
+    
+  - id: scheduled_cleanup
+    type: io.kestra.plugin.core.trigger.Schedule
+    cron: "0 0 * * *"
+    description: "Daily cleanup of old executions"

@@ -1,0 +1,32 @@
+# Kestra Configuration for AutoApply AI
+
+kestra:
+  server:
+    port: 8080
+    
+  repository:
+    type: local
+    
+  queue:
+    type: local
+    
+  storage:
+    type: local
+    local:
+      basePath: /tmp/kestra/storage
+      
+  encryption:
+    enabled: false
+
+  plugins:
+    defaults:
+      python:
+        python-path: python3
+
+  variables:
+    env-vars-prefix: "KESTRA_"
+
+logging:
+  level:
+    io.kestra: INFO
+
