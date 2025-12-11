@@ -338,10 +338,9 @@ vercel
 |--------|------|--------|
 | Ravi Shankar | [Frontend + AI] | [@RaviShankar-18](https://github.com/RaviShankar-18) |
 | Aryan Raj | [Backend + AI] | [@aryanhash](https://github.com/aryanhash) |
-| [Roshan Kumar] | [Backend + AI] | [@username] |
+| Roshan Kumar | [Backend + AI] | [@Roshanchandipur](https://github.com/Roshanchandipur) |
 
 **Hackathon**: AI Assemble 2025  
-**Submission Date**: December 2025
 
 <p align="center">
   Built with ❤️ for job seekers everywhere
