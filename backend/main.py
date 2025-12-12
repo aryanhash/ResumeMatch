@@ -150,13 +150,18 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS configuration - SECURITY: Restrict origins in production
+# CORS configuration - SECURITY: Restrict origins
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "").split(",")
-# Remove empty strings and default to localhost for development
+# Remove empty strings
 ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS if origin.strip()]
-if not ALLOWED_ORIGINS or os.getenv("ENVIRONMENT") != "production":
+
+# If explicitly set, use them. If empty, default to development origins.
+if not ALLOWED_ORIGINS:
     # Development: Allow localhost
     ALLOWED_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
     logger.warning("⚠️ CORS: Using development origins. Set ALLOWED_ORIGINS for production!")
+else:
+    logger.info(f"🌐 CORS Configured for: {ALLOWED_ORIGINS}")
 
 app.add_middleware(
     CORSMiddleware,
