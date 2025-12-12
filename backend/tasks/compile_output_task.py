@@ -15,6 +15,7 @@ from tasks.base_task import BaseTask
 
 
 def main():
+    """Main entry point for the output compilation task"""
     task = BaseTask("compile_output")
     
     def execute():

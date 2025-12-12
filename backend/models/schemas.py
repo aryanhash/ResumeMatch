@@ -7,6 +7,7 @@ from enum import Enum
 
 
 class ATSBucket(str, Enum):
+    """Enumeration of ATS score categories"""
     STRONG = "strong"
     MODERATE = "moderate"
     WEAK = "weak"
@@ -14,6 +15,7 @@ class ATSBucket(str, Enum):
 
 
 class Seniority(str, Enum):
+    """Enumeration of job seniority levels"""
     ENTRY = "entry"
     JUNIOR = "junior"
     MID = "mid"
@@ -24,6 +26,7 @@ class Seniority(str, Enum):
 
 # Resume Parser Schemas
 class Education(BaseModel):
+    """Schema representing an education entry"""
     degree: str
     institution: str
     year: Optional[str] = None
@@ -32,6 +35,7 @@ class Education(BaseModel):
 
 
 class Experience(BaseModel):
+    """Schema representing a work experience entry"""
     title: str
     company: str
     duration: str
@@ -40,6 +44,7 @@ class Experience(BaseModel):
 
 
 class Project(BaseModel):
+    """Schema representing a project entry"""
     name: str
     description: str
     technologies: List[str]
@@ -48,6 +53,7 @@ class Project(BaseModel):
 
 
 class ParsedResume(BaseModel):
+    """Schema for structured resume data"""
     name: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
@@ -66,6 +72,7 @@ class ParsedResume(BaseModel):
 
 # Job Description Schemas
 class ParsedJobDescription(BaseModel):
+    """Schema for structured job description data"""
     role: str
     company: Optional[str] = None
     required_skills: List[str]
@@ -81,12 +88,14 @@ class ParsedJobDescription(BaseModel):
 
 # Gap Analysis Schemas
 class SkillGap(BaseModel):
+    """Schema representing a specific skill gap"""
     skill: str
     importance: str = "required"  # required, preferred
     category: str = "technical"  # technical, soft, tool
 
 
 class GapAnalysis(BaseModel):
+    """Schema for the result of the gap analysis between resume and JD"""
     matching_skills: List[str]
     missing_skills: List[SkillGap]
     matching_tools: List[str]
@@ -102,6 +111,7 @@ class GapAnalysis(BaseModel):
 
 # ATS Scoring Schemas
 class ATSIssue(BaseModel):
+    """Schema representing a specific ATS compatibility issue"""
     category: str
     issue: str
     severity: str  # high, medium, low
@@ -109,6 +119,7 @@ class ATSIssue(BaseModel):
 
 
 class ATSScore(BaseModel):
+    """Schema for detailed ATS scoring results"""
     overall_score: int = Field(ge=0, le=100)
     bucket: ATSBucket
     skill_match_score: int = Field(ge=0, le=100)
@@ -122,12 +133,14 @@ class ATSScore(BaseModel):
 
 # Resume Rewrite Schemas
 class ImprovedBulletPoint(BaseModel):
+    """Schema for an improved resume bullet point"""
     original: str
     improved: str
     reason: str
 
 
 class RewrittenResume(BaseModel):
+    """Schema for the rewritten/optimized resume"""
     summary: str
     improved_bullets: List[ImprovedBulletPoint]
     reordered_skills: List[str]
@@ -138,6 +151,7 @@ class RewrittenResume(BaseModel):
 
 # Cover Letter Schema
 class CoverLetter(BaseModel):
+    """Schema for the generated cover letter"""
     content: str
     tone: str = "professional"
     word_count: int
@@ -146,6 +160,7 @@ class CoverLetter(BaseModel):
 
 # Explanation Schema
 class ResumeExplanation(BaseModel):
+    """Schema for the explanation of AI analysis"""
     recruiter_perspective: str
     ats_breakdown: str
     improvement_areas: List[Dict[str, str]]
@@ -155,6 +170,7 @@ class ResumeExplanation(BaseModel):
 
 # Project Recommendation Schemas
 class ProjectRecommendation(BaseModel):
+    """Schema for a recommended project"""
     name: str
     description: str
     skills_covered: List[str]
@@ -165,6 +181,7 @@ class ProjectRecommendation(BaseModel):
 
 
 class LearningPath(BaseModel):
+    """Schema for a recommended learning path"""
     skill: str
     resources: List[str]
     timeline: str
@@ -172,6 +189,7 @@ class LearningPath(BaseModel):
 
 
 class ProjectRecommendations(BaseModel):
+    """Schema for the collection of project recommendations"""
     recommended_projects: List[ProjectRecommendation]
     learning_paths: List[LearningPath]
     open_source_ideas: List[str]
@@ -179,6 +197,7 @@ class ProjectRecommendations(BaseModel):
 
 # Final Output Schema
 class AutoApplyResult(BaseModel):
+    """Schema for the final aggregated results of the pipeline"""
     parsed_resume: ParsedResume
     parsed_jd: ParsedJobDescription
     gap_analysis: GapAnalysis
@@ -192,11 +211,13 @@ class AutoApplyResult(BaseModel):
 
 # API Request/Response Schemas
 class ProcessRequest(BaseModel):
+    """Schema for processing request"""
     resume_text: str
     job_description: str
 
 
 class ProcessResponse(BaseModel):
+    """Schema for the API response"""
     success: bool
     workflow_id: Optional[str] = None
     result: Optional[AutoApplyResult] = None

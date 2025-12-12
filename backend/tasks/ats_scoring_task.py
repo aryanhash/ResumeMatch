@@ -16,6 +16,7 @@ from models.schemas import ParsedResume, ParsedJobDescription, GapAnalysis
 
 
 def main():
+    """Main entry point for the ATS scoring task"""
     task = BaseTask("ats_scoring")
     
     def execute():
