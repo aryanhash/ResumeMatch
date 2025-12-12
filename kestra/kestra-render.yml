@@ -1,0 +1,27 @@
+kestra:
+  server:
+    port: 8080  # Render default, but we can map it
+    base-path: /
+    
+  repository:
+    type: h2
+    url: jdbc:h2:/app/storage/kestra
+    
+  queue:
+    type: memory
+    
+  storage:
+    type: local
+    local:
+      basePath: /app/storage
+      
+  encryption:
+    enabled: true
+    secret-key: ${KESTRA_ENCRYPTION_KEY}
+    
+  variables:
+    env-vars-prefix: "KESTRA_"
+
+logging:
+  level:
+    io.kestra: INFO
