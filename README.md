@@ -14,11 +14,11 @@ Transform your resume into interview invites with AI-powered optimization, ATS s
 | Tool | Purpose |
 |------|---------|
 | **Kestra** | Runs and orchestrates all agents in sequence |
-| **Cline CLI** | Generates backend agent code + FastAPI stubs |
+| **Cline CLI** | Generates backend agent code + Code Review + FastAPI stubs |
 | **Together AI** | Resume rewriting, ATS scoring, cover letter, gap analysis |
 | **OUMI** | Fine-tunes a lightweight ATS scoring model for better precision |
 | **Vercel** | Hosts the Next.js frontend |
-| **Cline CLI Bot** | Automated PR reviews to maintain quality |
+| **CodeRabbit** | Automated PR reviews to maintain quality |
 
 ## 🏗️ Architecture
 
@@ -168,7 +168,7 @@ cd frontend
 vercel
 ```
 
-### 6️⃣ Cline Cli bot — Automated Code Review
+### 6️⃣ Coderabbit — Automated Code Review
 
 - PR feedback
 - Security warnings
@@ -329,6 +329,7 @@ vercel
 - [Together AI](https://together.ai) - LLM Infrastructure
 - [OUMI](https://oumi.ai) - Model Fine-tuning
 - [Vercel](https://vercel.com) - Frontend Hosting
+- [CodeRabbit](https://coderabbit.ai) - Code Review
 
 ---
 
