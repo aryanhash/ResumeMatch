@@ -12,13 +12,32 @@ Fixed Issues:
 5. ✅ Section order uses full context (gap analysis, ATS score)
 6. ✅ Output validation for honesty
 7. ✅ All helper methods receive full context
+
+API Support:
+- Together AI (for final submission)
+- Groq (for development/testing)
 """
 import json
 import os
 import re
 import logging
 from typing import Optional, List, Dict, Any
-from together import Together
+
+# Import both APIs with graceful fallback
+try:
+    from together import Together
+    TOGETHER_AVAILABLE = True
+except ImportError:
+    TOGETHER_AVAILABLE = False
+    print("⚠️ Together AI not installed")
+
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+    print("⚠️ Groq not installed")
+
 from models.schemas import (
     ParsedResume, ParsedJobDescription, GapAnalysis, ATSScore,
     RewrittenResume, Experience, SkillGap
@@ -45,8 +64,26 @@ class ResumeRewriteAgent:
     """
     
     def __init__(self, api_key: Optional[str] = None):
-        self.client = Together(api_key=api_key or os.getenv("TOGETHER_API_KEY"))
-        self.model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+        """Initialize with automatic API selection based on USE_GROQ env var"""
+        use_groq = os.getenv("USE_GROQ", "false").lower() == "true"
+        
+        if use_groq and GROQ_AVAILABLE:
+            # Use Groq for development/testing
+            print("🚀 Using Groq API for ResumeRewriteAgent")
+            self.client = Groq(api_key=api_key or os.getenv("GROQ_API_KEY"))
+            self.model = "llama-3.1-70b-versatile"
+            self.api_type = "groq"
+        elif TOGETHER_AVAILABLE:
+            # Use Together AI for production
+            print("🚀 Using Together AI for ResumeRewriteAgent")
+            self.client = Together(api_key=api_key or os.getenv("TOGETHER_API_KEY"))
+            self.model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+            self.api_type = "together"
+        else:
+            raise RuntimeError(
+                "❌ No AI API available for ResumeRewriteAgent!\n"
+                "Install either: pip install together OR pip install groq"
+            )
     
     def _clean_and_truncate(self, text: str, max_chars: int = 8000) -> str:
         """Clean and truncate text to fit context limits"""

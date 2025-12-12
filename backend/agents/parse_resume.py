@@ -5,7 +5,20 @@ import json
 import os
 import re
 from typing import Optional
-from together import Together
+
+# Import both APIs with fallback
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+
+try:
+    from together import Together
+    TOGETHER_AVAILABLE = True
+except ImportError:
+    TOGETHER_AVAILABLE = False
+
 from models.schemas import ParsedResume, Education, Experience, Project
 
 
@@ -16,8 +29,27 @@ class ResumeParserAgent:
     MAX_RESUME_CHARS = 20000
     
     def __init__(self, api_key: Optional[str] = None):
-        self.client = Together(api_key=api_key or os.getenv("TOGETHER_API_KEY"))
-        self.model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+        """
+        Initialize Resume Parser Agent with Groq (free) or Together AI (production)
+        
+        Auto-selects based on USE_GROQ environment variable:
+        - USE_GROQ=true → Groq with llama-3.3-70b-versatile
+        - USE_GROQ=false/unset → Together AI with Mixtral-8x7B
+        """
+        use_groq = os.getenv("USE_GROQ", "false").lower() == "true"
+        
+        if use_groq and GROQ_AVAILABLE:
+            # Groq Configuration (Free Tier)
+            self.client = Groq(api_key=api_key or os.getenv("GROQ_API_KEY"))
+            self.model = "llama-3.3-70b-versatile"
+            self.provider = "groq"
+        elif TOGETHER_AVAILABLE:
+            # Together AI Configuration (Production)
+            self.client = Together(api_key=api_key or os.getenv("TOGETHER_API_KEY"))
+            self.model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+            self.provider = "together"
+        else:
+            raise RuntimeError("Neither Groq nor Together AI client is available. Install with: pip install groq together")
     
     def _clean_and_truncate(self, text: str) -> str:
         """Clean and truncate resume text to fit within token limits"""
@@ -316,4 +348,3 @@ if __name__ == "__main__":
     agent = ResumeParserAgent()
     result = agent.parse(resume_text)
     print(result.model_dump_json(indent=2))
-

@@ -6,7 +6,7 @@ OUMI provides fine-tuned ATS classification.
 Together AI powers the core intelligence.
 """
 from .parse_resume import ResumeParserAgent
-from .analyze_jd import JDAnalyzerAgent
+from .jd_analyzer import JDAnalyzerAgent  # ← FIXED: Changed from analyze_jd
 from .gap_analysis import GapAnalysisAgent
 from .skill_agent import SkillAgent
 from .oumi_ats_classifier import OumiATSClassifier
@@ -28,4 +28,3 @@ __all__ = [
     "ExplanationAgent",
     "ProjectRecommendationAgent"
 ]
-

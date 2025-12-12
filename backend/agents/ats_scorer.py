@@ -10,11 +10,28 @@ Fixed Issues:
 6. ✅ Award-based formatting score (not penalty-based)
 7. ✅ Experience relevance checking
 8. ✅ Preferred skills as bonus, not penalty
+
+API Support:
+- Together AI (for final submission)
+- Groq (for development/testing)
 """
 import os
 import re
 from typing import Optional, List, Dict, Tuple
-from together import Together
+
+# Import both clients
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+
+try:
+    from together import Together
+    TOGETHER_AVAILABLE = True
+except ImportError:
+    TOGETHER_AVAILABLE = False
+
 from models.schemas import (
     ParsedResume, ParsedJobDescription, GapAnalysis,
     ATSScore, ATSBucket, ATSIssue, SkillGap
@@ -32,6 +49,10 @@ class ATSScorerAgent:
     - Experience Alignment: 20%
     
     Preferred skills add BONUS points (max +10), don't penalize
+    
+    API Support:
+    Set USE_GROQ=true in .env to use Groq (for testing)
+    Set USE_GROQ=false to use Together AI (for submission)
     """
     
     # Critical skills that must match for role consideration
@@ -54,8 +75,27 @@ class ATSScorerAgent:
     }
     
     def __init__(self, api_key: Optional[str] = None):
-        self.client = Together(api_key=api_key or os.getenv("TOGETHER_API_KEY"))
-        self.model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+        """
+        Initialize ATS Scorer Agent with Groq (free) or Together AI (production)
+        
+        Auto-selects based on USE_GROQ environment variable:
+        - USE_GROQ=true → Groq with llama-3.3-70b-versatile
+        - USE_GROQ=false/unset → Together AI with Mixtral-8x7B
+        """
+        use_groq = os.getenv("USE_GROQ", "false").lower() == "true"
+        
+        if use_groq and GROQ_AVAILABLE:
+            # Groq Configuration (Free Tier)
+            self.client = Groq(api_key=api_key or os.getenv("GROQ_API_KEY"))
+            self.model = "llama-3.3-70b-versatile"
+            self.provider = "groq"  # ← FIXED: Changed from api_type to provider
+        elif TOGETHER_AVAILABLE:
+            # Together AI Configuration (Production)
+            self.client = Together(api_key=api_key or os.getenv("TOGETHER_API_KEY"))
+            self.model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+            self.provider = "together"  # ← FIXED: Changed from api_type to provider
+        else:
+            raise RuntimeError("Neither Groq nor Together AI client is available. Install with: pip install groq together")
     
     def score(
         self, 

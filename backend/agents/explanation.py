@@ -1,10 +1,29 @@
 """
 Explanation Agent - Provides detailed analysis and explanations
+
+API Support:
+- Together AI (for final submission)
+- Groq (for development/testing)
 """
 import json
 import os
 from typing import Optional
-from together import Together
+
+# Import both APIs with graceful fallback
+try:
+    from together import Together
+    TOGETHER_AVAILABLE = True
+except ImportError:
+    TOGETHER_AVAILABLE = False
+    print("⚠️ Together AI not installed")
+
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+    print("⚠️ Groq not installed")
+
 from models.schemas import (
     ParsedResume, ParsedJobDescription, GapAnalysis, ATSScore,
     ResumeExplanation
@@ -15,8 +34,26 @@ class ExplanationAgent:
     """Agent responsible for explaining resume analysis from recruiter perspective"""
     
     def __init__(self, api_key: Optional[str] = None):
-        self.client = Together(api_key=api_key or os.getenv("TOGETHER_API_KEY"))
-        self.model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+        """Initialize with automatic API selection based on USE_GROQ env var"""
+        use_groq = os.getenv("USE_GROQ", "false").lower() == "true"
+        
+        if use_groq and GROQ_AVAILABLE:
+            # Use Groq for development/testing
+            print("🚀 Using Groq API for ExplanationAgent")
+            self.client = Groq(api_key=api_key or os.getenv("GROQ_API_KEY"))
+            self.model = "llama-3.1-70b-versatile"
+            self.api_type = "groq"
+        elif TOGETHER_AVAILABLE:
+            # Use Together AI for production
+            print("🚀 Using Together AI for ExplanationAgent")
+            self.client = Together(api_key=api_key or os.getenv("TOGETHER_API_KEY"))
+            self.model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+            self.api_type = "together"
+        else:
+            raise RuntimeError(
+                "❌ No AI API available for ExplanationAgent!\n"
+                "Install either: pip install together OR pip install groq"
+            )
     
     def explain(
         self,
@@ -115,10 +152,10 @@ Return ONLY the assessment text."""
 Overall Score: {ats_score.overall_score}/100 ({ats_score.bucket.value.replace('_', ' ').title()})
 
 Component Scores:
-• Skill Match: {ats_score.skill_match_score}/100 - {"Excellent" if ats_score.skill_match_score >= 80 else "Good" if ats_score.skill_match_score >= 60 else "Needs Work"}
-• Keyword Density: {ats_score.keyword_score}/100 - {"Strong" if ats_score.keyword_score >= 80 else "Moderate" if ats_score.keyword_score >= 60 else "Low"}
-• Formatting: {ats_score.formatting_score}/100 - {"Well Structured" if ats_score.formatting_score >= 80 else "Acceptable" if ats_score.formatting_score >= 60 else "Issues Found"}
-• Experience Alignment: {ats_score.experience_alignment_score}/100 - {"Aligned" if ats_score.experience_alignment_score >= 70 else "Partial Match" if ats_score.experience_alignment_score >= 50 else "Gap Exists"}
+- Skill Match: {ats_score.skill_match_score}/100 - {"Excellent" if ats_score.skill_match_score >= 80 else "Good" if ats_score.skill_match_score >= 60 else "Needs Work"}
+- Keyword Density: {ats_score.keyword_score}/100 - {"Strong" if ats_score.keyword_score >= 80 else "Moderate" if ats_score.keyword_score >= 60 else "Low"}
+- Formatting: {ats_score.formatting_score}/100 - {"Well Structured" if ats_score.formatting_score >= 80 else "Acceptable" if ats_score.formatting_score >= 60 else "Issues Found"}
+- Experience Alignment: {ats_score.experience_alignment_score}/100 - {"Aligned" if ats_score.experience_alignment_score >= 70 else "Partial Match" if ats_score.experience_alignment_score >= 50 else "Gap Exists"}
 
 Key Issues Found: {len(ats_score.issues)}
 """
@@ -250,4 +287,3 @@ if __name__ == "__main__":
     agent = ExplanationAgent()
     result = agent.explain(resume, jd, gap_analysis, ats_score)
     print(result.model_dump_json(indent=2))
-

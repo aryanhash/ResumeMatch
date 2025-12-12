@@ -17,7 +17,20 @@ import os
 import re
 import logging
 from typing import Optional, Dict, List, Set, Any
-from together import Together
+
+# Import both APIs with fallback
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+
+try:
+    from together import Together
+    TOGETHER_AVAILABLE = True
+except ImportError:
+    TOGETHER_AVAILABLE = False
+
 from models.schemas import ParsedResume
 
 logger = logging.getLogger(__name__)
@@ -143,8 +156,28 @@ class SkillAgent:
     }
     
     def __init__(self, api_key: Optional[str] = None):
-        self.client = Together(api_key=api_key or os.getenv("TOGETHER_API_KEY"))
-        self.model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+        """
+        Initialize Skill Agent with Groq (free) or Together AI (production)
+        
+        Auto-selects based on USE_GROQ environment variable:
+        - USE_GROQ=true → Groq with llama-3.3-70b-versatile
+        - USE_GROQ=false/unset → Together AI with Mixtral-8x7B
+        """
+        use_groq = os.getenv("USE_GROQ", "false").lower() == "true"
+        
+        if use_groq and GROQ_AVAILABLE:
+            # Groq Configuration (Free Tier)
+            self.client = Groq(api_key=api_key or os.getenv("GROQ_API_KEY"))
+            self.model = "llama-3.3-70b-versatile"
+            self.provider = "groq"
+        elif TOGETHER_AVAILABLE:
+            # Together AI Configuration (Production)
+            self.client = Together(api_key=api_key or os.getenv("TOGETHER_API_KEY"))
+            self.model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+            self.provider = "together"
+        else:
+            raise RuntimeError("Neither Groq nor Together AI client is available. Install with: pip install groq together")
+        
         self._build_synonym_index()
     
     def _build_synonym_index(self):

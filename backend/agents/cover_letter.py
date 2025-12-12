@@ -1,10 +1,29 @@
 """
 Cover Letter Agent - Generates personalized cover letters
+
+API Support:
+- Together AI (for final submission)
+- Groq (for development/testing)
 """
 import json
 import os
 from typing import Optional
-from together import Together
+
+# Import both APIs with graceful fallback
+try:
+    from together import Together
+    TOGETHER_AVAILABLE = True
+except ImportError:
+    TOGETHER_AVAILABLE = False
+    print("⚠️ Together AI not installed")
+
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+    print("⚠️ Groq not installed")
+
 from models.schemas import (
     ParsedResume, ParsedJobDescription, GapAnalysis, CoverLetter
 )
@@ -14,8 +33,26 @@ class CoverLetterAgent:
     """Agent responsible for generating personalized cover letters"""
     
     def __init__(self, api_key: Optional[str] = None):
-        self.client = Together(api_key=api_key or os.getenv("TOGETHER_API_KEY"))
-        self.model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+        """Initialize with automatic API selection based on USE_GROQ env var"""
+        use_groq = os.getenv("USE_GROQ", "false").lower() == "true"
+        
+        if use_groq and GROQ_AVAILABLE:
+            # Use Groq for development/testing
+            print("🚀 Using Groq API for CoverLetterAgent")
+            self.client = Groq(api_key=api_key or os.getenv("GROQ_API_KEY"))
+            self.model = "llama-3.1-70b-versatile"
+            self.api_type = "groq"
+        elif TOGETHER_AVAILABLE:
+            # Use Together AI for production
+            print("🚀 Using Together AI for CoverLetterAgent")
+            self.client = Together(api_key=api_key or os.getenv("TOGETHER_API_KEY"))
+            self.model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+            self.api_type = "together"
+        else:
+            raise RuntimeError(
+                "❌ No AI API available for CoverLetterAgent!\n"
+                "Install either: pip install together OR pip install groq"
+            )
     
     def generate(
         self,
@@ -149,4 +186,3 @@ if __name__ == "__main__":
     agent = CoverLetterAgent()
     result = agent.generate(resume, jd, gap_analysis, tone)
     print(result.model_dump_json(indent=2))
-
