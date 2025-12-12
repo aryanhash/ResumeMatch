@@ -18,7 +18,6 @@ Transform your resume into interview invites with AI-powered optimization, ATS s
 | **Together AI** | Resume rewriting, ATS scoring, cover letter, gap analysis |
 | **OUMI** | Fine-tunes a lightweight ATS scoring model for better precision |
 | **Vercel** | Hosts the Next.js frontend |
-| **Cline CLI Bot** | Automated PR reviews to maintain quality |
 
 ## 🏗️ Architecture
 
@@ -167,12 +166,6 @@ oumi infer \
 cd frontend
 vercel
 ```
-
-### 6️⃣ Cline Cli bot — Automated Code Review
-
-- PR feedback
-- Security warnings
-- Best practice suggestions
 
 ## 📁 Project Structure
 
