@@ -6,11 +6,35 @@ Generates CodeRabbit-style PR reviews with Cline branding
 
 import os
 import sys
+import io
 import json
 import requests
 from pathlib import Path
 from typing import Dict, List, Optional
 import subprocess
+
+# Force UTF-8 encoding for all I/O operations
+# This is critical for GitHub Actions which defaults to latin-1
+os.environ["PYTHONIOENCODING"] = "utf-8"
+os.environ["PYTHONUTF8"] = "1"
+
+# Reconfigure stdout, stdin, stderr to use UTF-8
+# This handles the case where GitHub Actions runner defaults to latin-1
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    if sys.stdin.isatty():
+        sys.stdin.reconfigure(encoding='utf-8', errors='replace')
+else:
+    # Fallback for older Python versions (Python < 3.7)
+    try:
+        if hasattr(sys.stdout, 'buffer'):
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        if hasattr(sys.stderr, 'buffer'):
+            sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except (AttributeError, ValueError):
+        # If reconfiguration fails, at least the environment variables will help
+        pass
 
 # OpenRouter API configuration
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -27,6 +51,8 @@ def get_pr_diff(base_ref: str, head_ref: str) -> str:
             ["git", "diff", f"{base_ref}...{head_ref}"],
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             check=True
         )
         return result.stdout
@@ -42,6 +68,8 @@ def get_changed_files(base_ref: str, head_ref: str) -> List[str]:
             ["git", "diff", "--name-only", f"{base_ref}...{head_ref}"],
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             check=True
         )
         return [f.strip() for f in result.stdout.split("\n") if f.strip()]
