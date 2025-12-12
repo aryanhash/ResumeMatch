@@ -35,6 +35,11 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
+# Fix: Set writable cache directory for Transformers
+ENV TRANSFORMERS_CACHE=/tmp/transformers_cache
+ENV HF_HOME=/tmp/huggingface
+RUN mkdir -p /tmp/transformers_cache /tmp/huggingface && chown -R appuser:appuser /tmp/transformers_cache /tmp/huggingface
+
 # Health check (using Python instead of curl to avoid needing curl)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
