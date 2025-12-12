@@ -212,14 +212,15 @@ export default function ProcessingPage() {
 
         // Update step status
         setSteps(prev => {
-          const updated = prev.map(step => {
+          const updated: Step[] = prev.map(step => {
             if (step.name === stepName) {
-              return {
+              const newStep: Step = {
                 ...step,
                 status: 'completed',
                 message: update.message,
                 details: update.details
-              } as Step
+              }
+              return newStep
             }
             return step
           })
