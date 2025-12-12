@@ -18,8 +18,8 @@ EXPOSE 8080
 ENV MICRONAUT_CONFIG_FILES=/app/kestra-render.yml
 ENV KESTRA_CONFIGURATION_FILE=/app/kestra-render.yml
 # Ensure java uses container limits with room for overhead
-# Render Free Tier = 512MB total. We allocate 256MB to Heap, leaving ~256MB for Metaspace/Stack/OS
-ENV JAVA_OPTS="-Xmx256m -Xms256m -XX:+UseSerialGC -XX:MaxMetaspaceSize=192m -Dfile.encoding=UTF-8"
+# Render Free Tier = 512MB total. Strict allocation: 128MB Heap + 128MB Metaspace + Stack/Native/OS overhead
+ENV JAVA_OPTS="-Xmx128m -Xms128m -XX:+UseSerialGC -XX:MaxMetaspaceSize=128m -Xss256k -Dfile.encoding=UTF-8 -XX:+ExitOnOutOfMemoryError"
 
 # Command to run Kestra Standalone
 CMD ["server", "standalone"]
