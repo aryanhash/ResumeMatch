@@ -101,7 +101,7 @@ File Categories:
 
 Diff:
 ```
-{diff[:45000]}  # Limit to 45k chars to avoid token limits
+{diff[:45000]}
 ```
 
 IMPORTANT: You must format your response EXACTLY as follows. Do not include any markdown code blocks around the response - output the raw markdown directly:
