@@ -302,25 +302,229 @@ The Skill Agent follows strict ethical guidelines:
 
 ## 🚀 Deployment
 
-### With Docker Compose
+### Deployment Architecture
+
+| Component | Technology | Recommended Platform | Alternative Options |
+|-----------|-----------|---------------------|-------------------|
+| **Frontend** | Next.js | ✅ **Vercel** | Netlify, AWS Amplify |
+| **Backend API** | FastAPI (Python) | ✅ **Railway** / **Render** | Fly.io, Google Cloud Run, AWS Elastic Beanstalk |
+| **Kestra Orchestrator** | Kestra | ✅ **Self-hosted (Docker)** | Railway, Render, Fly.io (see [KESTRA_DEPLOYMENT.md](./KESTRA_DEPLOYMENT.md)) |
+| **External Services** | Together AI, OUMI | API-based (no deployment needed) | - |
+
+---
+
+### 🎯 Recommended Deployment Strategy
+
+#### **Option 1: Railway (Easiest - Recommended for Hackathons)**
+- ✅ Free tier available
+- ✅ Automatic deployments from GitHub
+- ✅ Built-in Docker support
+- ✅ Simple environment variable management
+- ✅ Good for FastAPI + Kestra
+
+#### **Option 2: Render (Best Free Tier)**
+- ✅ Generous free tier
+- ✅ Auto-deploy from GitHub
+- ✅ Docker support
+- ✅ Free PostgreSQL (if needed later)
+- ⚠️ Spins down after inactivity (free tier)
+
+#### **Option 3: Fly.io (Best Performance)**
+- ✅ Global edge deployment
+- ✅ Great for low latency
+- ✅ Generous free tier
+- ⚠️ Slightly more complex setup
+
+---
+
+### 📦 Step-by-Step Deployment
+
+#### **1. Frontend (Vercel) - Already Set Up ✅**
+
+```bash
+cd frontend
+vercel
+# Follow prompts, connect GitHub repo
+```
+
+**Environment Variables in Vercel:**
+- `NEXT_PUBLIC_API_URL` = `https://your-backend-url.railway.app` (or your backend URL)
+
+---
+
+#### **2. Backend API (FastAPI) - Railway (Recommended)**
+
+**Step 1: Create Railway Account**
+1. Go to [railway.app](https://railway.app)
+2. Sign up with GitHub
+3. Click "New Project" → "Deploy from GitHub repo"
+
+**Step 2: Configure Backend Service**
+1. Select your repository
+2. Railway auto-detects Dockerfile
+3. Set root directory: `backend`
+4. Add environment variables:
+   ```
+   TOGETHER_API_KEY=your_together_api_key
+   API_KEY=your_api_key_for_auth
+   ALLOWED_ORIGINS=https://your-frontend.vercel.app,http://localhost:3000
+   HOST=0.0.0.0
+   PORT=8000
+   DEBUG=false
+   ```
+
+**Step 3: Deploy**
+- Railway automatically builds and deploys
+- Get your backend URL: `https://your-backend.railway.app`
+
+**Alternative: Render**
+1. Go to [render.com](https://render.com)
+2. New → Web Service
+3. Connect GitHub repo
+4. Settings:
+   - **Build Command**: `cd backend && pip install -r requirements.txt`
+   - **Start Command**: `cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT`
+   - **Root Directory**: `backend`
+5. Add environment variables (same as Railway)
+6. Deploy
+
+---
+
+#### **3. Kestra Orchestrator (Optional - if using Kestra)**
+
+**Option A: Deploy on Railway (Same Project)**
+1. In Railway project, click "New Service"
+2. Select "Dockerfile" or use Kestra image
+3. Configure:
+   - **Image**: `kestra/kestra:latest`
+   - **Port**: `8080`
+   - **Command**: `server standalone`
+4. Add volumes for flows (if needed)
+
+**Option B: Deploy on Render**
+1. New → Web Service
+2. Use Docker image: `kestra/kestra:latest`
+3. Command: `server standalone`
+4. Port: `8080`
+
+**Option C: Skip Kestra (Simplified)**
+- If you're not using Kestra workflows, you can skip this
+- Your FastAPI backend can orchestrate agents directly
+
+---
+
+### 🔧 Environment Variables Setup
+
+Create `.env` files or set in your platform:
+
+**Backend (.env or Platform Variables):**
+```env
+TOGETHER_API_KEY=your_together_api_key_here
+API_KEY=your_secret_api_key_for_auth
+ALLOWED_ORIGINS=https://your-app.vercel.app,http://localhost:3000
+HOST=0.0.0.0
+PORT=8000
+DEBUG=false
+```
+
+**Frontend (Vercel Environment Variables):**
+```env
+NEXT_PUBLIC_API_URL=https://your-backend.railway.app
+```
+
+---
+
+### 🐳 Docker Compose (Local Development)
+
+For local testing:
 
 ```bash
 docker-compose up
 ```
 
-### Kestra Pipeline
+This runs:
+- Backend on `http://localhost:8000`
+- Frontend on `http://localhost:3000`
+- Kestra on `http://localhost:8080`
 
+---
+
+### 🔗 Connecting Components
+
+1. **Update Frontend API URL:**
+   - In Vercel, set `NEXT_PUBLIC_API_URL` to your backend URL
+   - Or update `frontend/.env.local`:
+     ```env
+     NEXT_PUBLIC_API_URL=https://your-backend.railway.app
+     ```
+
+2. **Update Backend CORS:**
+   - In Railway/Render, set `ALLOWED_ORIGINS`:
+     ```env
+     ALLOWED_ORIGINS=https://your-frontend.vercel.app
+     ```
+
+3. **Test Connection:**
+   ```bash
+   curl https://your-backend.railway.app/health
+   ```
+
+---
+
+### 🚀 Quick Deploy Commands
+
+**Railway (CLI):**
 ```bash
-docker run -p 8080:8080 kestra/kestra:latest
-kestra flow create --file kestra/autoapplyai_pipeline.yaml
+npm i -g @railway/cli
+railway login
+railway init
+railway up
 ```
 
-### Vercel Frontend
-
+**Render (CLI):**
 ```bash
+npm i -g render-cli
+render login
+render deploy
+```
+
+**Vercel (CLI):**
+```bash
+npm i -g vercel
 cd frontend
 vercel
 ```
+
+---
+
+### 📊 Deployment Checklist
+
+- [ ] Backend deployed and accessible
+- [ ] Frontend deployed on Vercel
+- [ ] Environment variables set correctly
+- [ ] CORS configured for frontend domain
+- [ ] API health check passing
+- [ ] Frontend can connect to backend
+- [ ] Together AI API key configured
+- [ ] Test end-to-end flow
+
+---
+
+### 🆘 Troubleshooting
+
+**Backend not accessible:**
+- Check Railway/Render logs
+- Verify port is exposed (8000)
+- Check environment variables
+
+**CORS errors:**
+- Verify `ALLOWED_ORIGINS` includes your Vercel URL
+- Check frontend is using correct `NEXT_PUBLIC_API_URL`
+
+**Build failures:**
+- Check Dockerfile syntax
+- Verify all dependencies in `requirements.txt`
+- Check platform build logs
 
 ## 🙏 Acknowledgments
 

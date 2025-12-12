@@ -179,7 +179,7 @@ async def verify_api_key(
     Verify API key for protected endpoints
     
     SECURITY: In production, require API key or JWT token
-    For development, allow if API_KEY env var is not set
+    For development, allow if API_KEY env var is not set or ENVIRONMENT is not production
     """
     # Skip auth check if API_KEY not configured (development mode)
     if not API_KEY:
@@ -190,6 +190,24 @@ async def verify_api_key(
             )
         return True  # Development mode - allow
     
+    # In development mode, allow requests without API key
+    if os.getenv("ENVIRONMENT") != "production":
+        # If API key is provided, validate it; otherwise allow in dev mode
+        if x_api_key or authorization:
+            # Validate provided key
+            if x_api_key and x_api_key == API_KEY:
+                return True
+            if authorization and authorization.startswith("Bearer "):
+                token = authorization.split(" ")[1]
+                if token == API_KEY:
+                    return True
+            # Invalid key provided in dev mode - still allow but log warning
+            logger.warning("⚠️ Invalid API key provided in development mode, but allowing request")
+            return True
+        # No API key provided in dev mode - allow
+        return True
+    
+    # Production mode - require valid API key
     # Check API key header
     if x_api_key and x_api_key == API_KEY:
         return True
@@ -315,8 +333,10 @@ def run_pipeline(resume_text: str, jd_text: str, progress_callback: Optional[Cal
     logger.info("📋 Step 2: Analyzing job description...")
     emit_progress(2, "Analyzing JD", "processing", "Analyzing job description...")
     parsed_jd = jd_analyzer.analyze(jd_text)
-    logger.info(f"   ✓ Role: {parsed_jd.role}, Required skills: {len(parsed_jd.required_skills)}")
-    emit_progress(2, "Analyzing JD", "completed", f"Job Description Analysis Complete.", {"role": parsed_jd.role, "required_skills": parsed_jd.required_skills[:10]})
+    logger.info(f"   ✓ Role: {parsed_jd.role}, Required skills: {len(parsed_jd.required_skills) if parsed_jd.required_skills else 0}")
+    # Safely handle required_skills - it might be None or empty
+    required_skills_preview = parsed_jd.required_skills[:10] if parsed_jd.required_skills and len(parsed_jd.required_skills) > 0 else []
+    emit_progress(2, "Analyzing JD", "completed", f"Job Description Analysis Complete.", {"role": parsed_jd.role, "required_skills": required_skills_preview})
     
     # Step 3: Gap Analysis
     logger.info("🔍 Step 3: Performing gap analysis...")
