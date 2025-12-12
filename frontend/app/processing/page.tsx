@@ -202,7 +202,7 @@ export default function ProcessingPage() {
         // Mark step as processing
         setSteps(prev => prev.map(step => {
           if (step.name === stepName) {
-            return { ...step, status: 'processing' }
+            return { ...step, status: 'processing' } as Step
           }
           return step
         }))
@@ -219,7 +219,7 @@ export default function ProcessingPage() {
                 status: 'completed',
                 message: update.message,
                 details: update.details
-              }
+              } as Step
             }
             return step
           })
@@ -445,8 +445,8 @@ export default function ProcessingPage() {
                       <div
                         key={i}
                         className={`mb-1 ${log.type === 'success' ? 'text-neon-green' :
-                            log.type === 'error' ? 'text-red-400' :
-                              'text-zinc-400'
+                          log.type === 'error' ? 'text-red-400' :
+                            'text-zinc-400'
                           }`}
                       >
                         <span className="text-zinc-600">[{log.time}]</span> {log.message}
