@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -43,7 +43,7 @@ interface Step {
   details?: any
 }
 
-export default function ProcessingPage() {
+function ProcessingContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { data: session } = useSession()
@@ -510,3 +510,18 @@ export default function ProcessingPage() {
 }
 
 
+
+export default function ProcessingPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen gradient-bg flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4 text-zinc-400">
+          <Loader2 className="w-8 h-8 animate-spin text-electric-400" />
+          <p>Loading application...</p>
+        </div>
+      </div>
+    }>
+      <ProcessingContent />
+    </Suspense>
+  )
+}
