@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Upload, FileText, Briefcase, Sparkles, ArrowRight, 
@@ -11,6 +11,15 @@ import {
 import { useDropzone } from 'react-dropzone'
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
+
+// SECURITY: Validate API URL at build time
+function getApiUrl(): string {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL
+  if (!apiUrl && process.env.NODE_ENV === 'production') {
+    throw new Error('NEXT_PUBLIC_API_URL environment variable is required in production')
+  }
+  return apiUrl || 'http://localhost:8000'
+}
 
 // Types
 interface ATSScore {
@@ -118,6 +127,34 @@ export default function Home() {
   const [result, setResult] = useState<Result | null>(null)
   const [activeTab, setActiveTab] = useState('overview')
   const [error, setError] = useState('')
+  
+  // Check for result from processing page
+  useEffect(() => {
+    const checkForResult = () => {
+      const storedResult = sessionStorage.getItem('processingResult')
+      if (storedResult) {
+        try {
+          const parsedResult = JSON.parse(storedResult)
+          setResult(parsedResult)
+          setStep(3)
+          sessionStorage.removeItem('processingResult')
+        } catch (e) {
+          console.error('Failed to parse stored result:', e)
+        }
+      }
+    }
+    
+    // Check immediately
+    checkForResult()
+    
+    // Also check periodically and on focus (in case user navigated back)
+    const interval = setInterval(checkForResult, 1000)
+    window.addEventListener('focus', checkForResult)
+    return () => {
+      clearInterval(interval)
+      window.removeEventListener('focus', checkForResult)
+    }
+  }, [])
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0]
@@ -141,7 +178,7 @@ export default function Home() {
         console.log(`📤 Sending ${fileExtension.toUpperCase()} file to backend for parsing...`)
         
         try {
-          const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+          const apiUrl = getApiUrl()
           const formData = new FormData()
           formData.append('file', file)
           
@@ -198,49 +235,15 @@ export default function Home() {
     console.log(`📋 Job description length: ${jobDescription.length} characters`)
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
-      console.log(`📡 Sending request to: ${apiUrl}/process`)
+      // Store data in sessionStorage for processing page
+      sessionStorage.setItem('resumeText', resumeText)
+      sessionStorage.setItem('jobDescription', jobDescription)
       
-      const response = await fetch(`${apiUrl}/process`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          resume_text: resumeText,
-          job_description: jobDescription,
-        }),
-      })
-
-      console.log(`📥 Response status: ${response.status}`)
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('❌ Server error:', errorText)
-        throw new Error(`Server error: ${response.status} - ${errorText}`)
-      }
-
-      const data = await response.json()
-      console.log('📦 Response data:', data.success ? 'Success' : 'Failed')
-
-      if (data.success) {
-        console.log('✅ Processing completed successfully!')
-        console.log(`📊 ATS Score: ${data.result.ats_score.overall_score}`)
-        setResult(data.result)
-        setStep(3)
-      } else {
-        console.error('❌ Processing failed:', data.error)
-        setError(data.error || 'Processing failed')
-      }
+      // Navigate to processing page
+      window.location.href = '/processing'
     } catch (err: any) {
-      console.error('❌ Connection error:', err)
-      const errorMessage = err.message || 'Unknown error'
-      if (errorMessage.includes('fetch')) {
-        setError('Failed to connect to the server. Please ensure the backend is running on http://localhost:8000')
-      } else {
-        setError(`Error: ${errorMessage}`)
-      }
-    } finally {
+      console.error('❌ Navigation error:', err)
+      setError(`Error: ${err.message}`)
       setIsProcessing(false)
     }
   }
@@ -263,7 +266,14 @@ export default function Home() {
   const [downloadFormat, setDownloadFormat] = useState<'pdf' | 'word'>('pdf')
 
   const downloadResume = async (format: 'pdf' | 'word' = 'pdf') => {
-    if (!resumeText || !jobDescription) return
+    // Get resume text and job description from state or sessionStorage
+    const resumeTextToUse = resumeText || sessionStorage.getItem('resumeText') || ''
+    const jobDescriptionToUse = jobDescription || sessionStorage.getItem('jobDescription') || ''
+    
+    if (!resumeTextToUse || !jobDescriptionToUse) {
+      setError('Resume or job description not found. Please try processing again.')
+      return
+    }
     
     setIsDownloading(true)
     try {
@@ -278,8 +288,8 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          resume_text: resumeText,
-          job_description: jobDescription,
+          resume_text: resumeTextToUse,
+          job_description: jobDescriptionToUse,
         }),
       })
       
@@ -308,7 +318,14 @@ export default function Home() {
   }
 
   const downloadCoverLetter = async () => {
-    if (!resumeText || !jobDescription) return
+    // Get resume text and job description from state or sessionStorage
+    const resumeTextToUse = resumeText || sessionStorage.getItem('resumeText') || ''
+    const jobDescriptionToUse = jobDescription || sessionStorage.getItem('jobDescription') || ''
+    
+    if (!resumeTextToUse || !jobDescriptionToUse) {
+      setError('Resume or job description not found. Please try processing again.')
+      return
+    }
     
     setIsDownloading(true)
     try {
@@ -322,8 +339,8 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          resume_text: resumeText,
-          job_description: jobDescription,
+          resume_text: resumeTextToUse,
+          job_description: jobDescriptionToUse,
         }),
       })
       

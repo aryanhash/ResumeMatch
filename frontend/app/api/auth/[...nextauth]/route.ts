@@ -2,13 +2,14 @@ import NextAuth from "next-auth"
 import GoogleProvider from "next-auth/providers/google"
 import CredentialsProvider from "next-auth/providers/credentials"
 
-// Debug: Log environment variables (remove in production)
-console.log("NextAuth Config:", {
-  hasGoogleClientId: !!process.env.GOOGLE_CLIENT_ID,
-  hasGoogleClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
-  hasNextAuthSecret: !!process.env.NEXTAUTH_SECRET,
-  nextAuthUrl: process.env.NEXTAUTH_URL,
-})
+// Validate required environment variables at startup
+if (process.env.NODE_ENV === 'production') {
+  const requiredEnvVars = ['NEXTAUTH_SECRET', 'NEXTAUTH_URL']
+  const missing = requiredEnvVars.filter(v => !process.env[v])
+  if (missing.length > 0) {
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`)
+  }
+}
 
 const handler = NextAuth({
   debug: process.env.NODE_ENV === 'development',
@@ -24,6 +25,10 @@ const handler = NextAuth({
         }
       }
     }),
+    // SECURITY: Credentials provider disabled by default
+    // Uncomment and implement proper authentication if needed
+    // For production, use a proper authentication service (Auth0, Firebase, etc.)
+    /*
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -31,18 +36,22 @@ const handler = NextAuth({
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        // Add your own logic here to validate credentials
-        // For demo purposes, accept any email/password
-        if (credentials?.email && credentials?.password) {
-          return {
-            id: "1",
-            email: credentials.email,
-            name: credentials.email.split("@")[0],
-          }
+        // SECURITY: Implement proper credential validation
+        // Example: Validate against database or identity provider
+        if (!credentials?.email || !credentials?.password) {
+          return null
         }
-        return null
+        
+        // TODO: Implement actual authentication logic
+        // Example:
+        // const user = await validateUser(credentials.email, credentials.password)
+        // if (!user) return null
+        // return { id: user.id, email: user.email, name: user.name }
+        
+        return null // Reject all credentials until properly implemented
       }
     })
+    */
   ],
   pages: {
     signIn: "/signin",

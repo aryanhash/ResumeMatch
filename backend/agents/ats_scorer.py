@@ -1,15 +1,12 @@
 """
-ATS Scoring Agent - Accurate, Bug-Free ATS Compatibility Scoring
+ATS Scoring Agent - Improved Logic with Fair Scoring
 
-Fixed Issues:
-1. ✅ Correct match ratio (separates required from preferred)
-2. ✅ Consistent skill types handling
-3. ✅ Issues affect the final score
-4. ✅ Critical gaps block high scores
-5. ✅ Realistic keyword scoring
-6. ✅ Award-based formatting score (not penalty-based)
-7. ✅ Experience relevance checking
-8. ✅ Preferred skills as bonus, not penalty
+Key Improvements:
+1. ✅ Graduated penalty system (not flat -15 for all critical)
+2. ✅ Bucket alignment with external OUMI classifier
+3. ✅ Integer-only experience counting
+4. ✅ More realistic score ranges
+5. ✅ Better handling of edge cases
 """
 import os
 import re
@@ -23,15 +20,20 @@ from models.schemas import (
 
 class ATSScorerAgent:
     """
-    ATS Scoring Agent with accurate, fair scoring
+    ATS Scoring Agent with balanced, fair scoring
     
     Score Breakdown:
     - Required Skills: 40% (most critical)
     - Keywords: 20%
     - Formatting: 20%
     - Experience Alignment: 20%
+    - Preferred Skills Bonus: up to +10
     
-    Preferred skills add BONUS points (max +10), don't penalize
+    Scoring Philosophy:
+    - 80+: Strong candidate, good match
+    - 60-79: Moderate candidate, worth reviewing
+    - 40-59: Weak candidate, significant gaps
+    - <40: Not ATS friendly, poor match
     """
     
     # Critical skills that must match for role consideration
@@ -45,12 +47,12 @@ class ATSScorerAgent:
         "cloud": ["aws", "azure", "gcp", "docker"],
     }
     
-    # Issue severity penalties - more lenient
+    # GRADUATED penalty system - fairer than flat penalties
     SEVERITY_PENALTIES = {
-        "critical": -15,
-        "high": -6,
-        "medium": -3,
-        "low": -1
+        "critical": lambda count: min(-8 * count, -20),  # -8 per issue, max -20
+        "high": lambda count: min(-4 * count, -12),      # -4 per issue, max -12
+        "medium": lambda count: min(-2 * count, -6),     # -2 per issue, max -6
+        "low": lambda count: min(-1 * count, -3)         # -1 per issue, max -3
     }
     
     def __init__(self, api_key: Optional[str] = None):
@@ -65,25 +67,14 @@ class ATSScorerAgent:
     ) -> ATSScore:
         """Calculate comprehensive, accurate ATS score"""
         
-        # Step 1: Identify issues FIRST (affects final score)
-        issues = self._identify_issues(resume, jd, gap_analysis)
-        
-        # Step 2: Check for critical blockers (only SEVERE ones cap score)
-        critical_issues = [i for i in issues if i.severity == "critical"]
-        missing_critical = self._get_missing_critical_skills(jd, gap_analysis)
-        
-        # Only cap score for severe critical gaps (4+ missing critical skills)
-        # Allow more flexibility for realistic scoring
-        has_severe_blockers = len(missing_critical) >= 4 or len(critical_issues) >= 3
-
-        # Step 3: Calculate component scores
+        # Step 1: Calculate component scores
         skill_score, skill_details = self._calculate_skill_score(gap_analysis, jd)
         keyword_score = self._calculate_keyword_score(gap_analysis)
         formatting_score = self._calculate_formatting_score(resume)
         experience_score = self._calculate_experience_score(resume, jd)
-        preferred_bonus = self._calculate_preferred_bonus(gap_analysis)
+        preferred_bonus = self._calculate_preferred_bonus(gap_analysis, jd)
 
-        # Step 4: Calculate base score (weighted)
+        # Step 2: Calculate base score (weighted)
         base_score = int(
             skill_score * 0.40 +      # Required skills: 40%
             keyword_score * 0.20 +     # Keywords: 20%
@@ -91,31 +82,36 @@ class ATSScorerAgent:
             experience_score * 0.20    # Experience: 20%
         )
 
-        # Step 5: Add preferred skills bonus (max +10)
+        # Step 3: Add preferred skills bonus (max +10)
         base_score += preferred_bonus
 
-        # Step 6: Apply issue penalties (less severe)
-        issue_penalty = sum(self.SEVERITY_PENALTIES.get(i.severity, 0) for i in issues)
+        # Step 4: Identify issues and apply GRADUATED penalties
+        issues = self._identify_issues(resume, jd, gap_analysis)
+        issue_penalty = self._calculate_issue_penalty(issues)
         penalized_score = base_score + issue_penalty
 
-        # Step 7: Cap score only for truly severe blockers
-        if has_severe_blockers:
-            # Can't be "strong" with severe critical gaps
-            penalized_score = min(penalized_score, 60)
+        # Step 5: Check for critical blockers
+        missing_critical = self._get_missing_critical_skills(jd, gap_analysis)
+        
+        # Apply caps only for SEVERE blockers (more lenient)
+        if len(missing_critical) >= 4:
+            # 4+ critical missing = hard cap
+            penalized_score = min(penalized_score, 55)
         elif len(missing_critical) >= 3:
-            # 3 missing critical = can't be higher than moderate
+            # 3 critical missing = moderate cap
+            penalized_score = min(penalized_score, 65)
+        elif len(missing_critical) == 2:
+            # 2 critical missing = light cap
             penalized_score = min(penalized_score, 75)
-        elif len(missing_critical) >= 2:
-            # 2 missing critical = small penalty, can still be moderate
-            penalized_score = min(penalized_score, 82)
+        # 1 critical missing = no cap, let penalties handle it
         
         # Final score clamped to 0-100
         overall_score = max(0, min(100, penalized_score))
         
-        # Step 8: Determine bucket (considers critical gaps)
+        # Step 6: Determine bucket (aligned with OUMI classifier expectations)
         bucket = self._determine_bucket(overall_score, missing_critical, skill_details)
         
-        # Step 9: Generate recommendations
+        # Step 7: Generate recommendations
         recommendations = self._get_recommendations(
             resume, jd, gap_analysis, issues, skill_details
         )
@@ -132,6 +128,26 @@ class ATSScorerAgent:
             recommendations=recommendations
         )
     
+    def _calculate_issue_penalty(self, issues: List[ATSIssue]) -> int:
+        """
+        Calculate graduated penalty based on issue counts
+        
+        This prevents over-penalization from a single critical issue
+        """
+        # Group issues by severity
+        severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        for issue in issues:
+            severity_counts[issue.severity] = severity_counts.get(issue.severity, 0) + 1
+        
+        # Apply graduated penalties
+        total_penalty = 0
+        for severity, count in severity_counts.items():
+            if count > 0:
+                penalty_func = self.SEVERITY_PENALTIES[severity]
+                total_penalty += penalty_func(count)
+        
+        return total_penalty
+    
     def _get_missing_critical_skills(
         self, 
         jd: ParsedJobDescription, 
@@ -144,6 +160,8 @@ class ATSScorerAgent:
         - It's in the FIRST 3 required skills (primary requirements)
         - AND it's a known critical skill for the role type
         """
+        if not jd.required_skills:
+            return []
         
         # Determine which skills are critical based on role
         role_lower = jd.role.lower()
@@ -153,9 +171,6 @@ class ATSScorerAgent:
             if role_type in role_lower:
                 critical_for_role.update(skills)
         
-        # Check which critical skills are missing
-        missing_critical = []
-        
         # Get missing required skills
         missing_required = [s.skill.lower() for s in gap_analysis.missing_skills 
                           if s.importance == "required"]
@@ -163,6 +178,7 @@ class ATSScorerAgent:
         # Only TOP 3 required skills + role-critical skills count
         top_required = {s.lower() for s in jd.required_skills[:3]}
         
+        missing_critical = []
         for skill in missing_required:
             skill_lower = skill.lower()
             # Consider critical if: in top 3 required OR a known critical skill for the role
@@ -177,44 +193,37 @@ class ATSScorerAgent:
         jd: ParsedJobDescription
     ) -> Tuple[int, Dict]:
         """
-        Calculate skill match score - CORRECTLY separates required from preferred
-        
-        Returns: (score, details_dict)
+        Calculate skill match score - correctly separates required from preferred
         """
-        
-        # Get ONLY required skills matched
-        # matching_skills is List[str], missing_skills is List[SkillGap]
-        
-        # Count required matched: we need to check against JD required skills
-        required_skills_lower = {s.lower() for s in jd.required_skills}
-        matched_skills_lower = {s.lower() for s in gap_analysis.matching_skills}
-        
-        # Count required that were matched
-        required_matched = matched_skills_lower.intersection(required_skills_lower)
-        
-        # Count required that were missed
-        missing_required = [s for s in gap_analysis.missing_skills if s.importance == "required"]
-        
-        # Total required skills
-        total_required = len(jd.required_skills)
-        
-        if total_required == 0:
+        if not jd.required_skills:
             return 70, {"required_matched": 0, "required_total": 0, "match_rate": 1.0}
         
-        # Calculate CORRECT match ratio
+        # Count required matched
+        required_skills_lower = {s.lower() for s in jd.required_skills}
+        
+        required_matched = set()
+        for skill in gap_analysis.matching_skills:
+            skill_lower = skill.lower()
+            if skill_lower in required_skills_lower:
+                required_matched.add(skill_lower)
+        
+        missing_required = [s for s in gap_analysis.missing_skills if s.importance == "required"]
+        total_required = len(jd.required_skills)
+        
+        # Calculate match ratio
         match_ratio = len(required_matched) / total_required
         
-        # Score based on match ratio - more lenient for realistic scoring
-        if match_ratio >= 0.7:
-            score = 85 + int((match_ratio - 0.7) * 50)  # 85-100
-        elif match_ratio >= 0.5:
-            score = 65 + int((match_ratio - 0.5) * 100)  # 65-85
-        elif match_ratio >= 0.3:
-            score = 45 + int((match_ratio - 0.3) * 100)  # 45-65
+        # More realistic scoring curve
+        if match_ratio >= 0.8:
+            score = 88 + int((match_ratio - 0.8) * 60)  # 88-100
+        elif match_ratio >= 0.6:
+            score = 72 + int((match_ratio - 0.6) * 80)  # 72-88
+        elif match_ratio >= 0.4:
+            score = 55 + int((match_ratio - 0.4) * 85)  # 55-72
         elif match_ratio >= 0.2:
-            score = 25 + int((match_ratio - 0.2) * 100)  # 25-45
+            score = 35 + int((match_ratio - 0.2) * 100)  # 35-55
         else:
-            score = max(10, int(match_ratio * 125))  # 10-25 minimum
+            score = max(15, int(match_ratio * 175))  # 15-35
         
         details = {
             "required_matched": len(required_matched),
@@ -226,91 +235,72 @@ class ATSScorerAgent:
         
         return max(0, min(100, score)), details
     
-    def _calculate_preferred_bonus(self, gap_analysis: GapAnalysis) -> int:
-        """
-        Calculate bonus for matching preferred skills
-        
-        This is BONUS only - missing preferred skills don't penalize
-        Max bonus: +10 points
-        """
-        # Count preferred skills matched
-        matched_preferred = [s for s in gap_analysis.matching_skills]
-        # We need to check against missing_skills to see what was preferred
-        missing_preferred_count = len([s for s in gap_analysis.missing_skills 
-                                       if s.importance == "preferred"])
-        
-        total_preferred = len(matched_preferred) + missing_preferred_count
-        
-        if total_preferred == 0:
+    def _calculate_preferred_bonus(
+        self, 
+        gap_analysis: GapAnalysis, 
+        jd: ParsedJobDescription
+    ) -> int:
+        """Calculate bonus for matching preferred skills (max +10)"""
+        if not jd.preferred_skills:
             return 0
         
-        # Estimate how many matched were preferred (not exact, but reasonable)
-        # Since matching_skills doesn't have importance, assume non-required are preferred
-        matched_preferred_estimate = len(matched_preferred) - len([
-            s for s in gap_analysis.missing_skills if s.importance == "required"
-        ])
-        matched_preferred_estimate = max(0, matched_preferred_estimate)
+        preferred_skills_lower = {s.lower() for s in jd.preferred_skills}
+        matched_skills_lower = {s.lower() for s in gap_analysis.matching_skills}
         
-        # Max +10 bonus, +2 per matched preferred skill
-        bonus = min(10, matched_preferred_estimate * 2)
+        preferred_matched = matched_skills_lower.intersection(preferred_skills_lower)
+        matched_count = len(preferred_matched)
+        
+        # +2 per preferred skill matched, capped at +10
+        bonus = min(10, matched_count * 2)
         
         return bonus
     
     def _calculate_keyword_score(self, gap_analysis: GapAnalysis) -> int:
-        """
-        Calculate keyword density score - realistic scoring
-        
-        0 keywords matched = low score (not 40+)
-        """
+        """Calculate keyword density score"""
         total_keywords = len(gap_analysis.matching_keywords) + len(gap_analysis.missing_keywords)
         
         if total_keywords == 0:
-            return 50  # Neutral, not 75
+            return 50  # Neutral baseline
         
         matched = len(gap_analysis.matching_keywords)
         match_ratio = matched / total_keywords
         
-        # Realistic scoring for keywords (less strict):
-        # 60%+ = good (75-100)
-        # 40-60% = moderate (55-75)
-        # 20-40% = fair (30-55)
-        # <20% = poor (0-30)
-
-        if match_ratio >= 0.6:
-            score = 75 + int((match_ratio - 0.6) * 83)  # 75-100
-        elif match_ratio >= 0.4:
-            score = 55 + int((match_ratio - 0.4) * 100)  # 55-75
-        elif match_ratio >= 0.2:
-            score = 30 + int((match_ratio - 0.2) * 125)  # 30-55
+        # Realistic keyword scoring
+        if match_ratio >= 0.7:
+            score = 82 + int((match_ratio - 0.7) * 60)  # 82-100
+        elif match_ratio >= 0.5:
+            score = 65 + int((match_ratio - 0.5) * 85)  # 65-82
+        elif match_ratio >= 0.3:
+            score = 45 + int((match_ratio - 0.3) * 100)  # 45-65
+        elif match_ratio >= 0.15:
+            score = 25 + int((match_ratio - 0.15) * 133)  # 25-45
         else:
-            score = max(5, int(match_ratio * 150))  # 5-30 minimum
+            score = max(10, int(match_ratio * 167))  # 10-25
         
         return max(0, min(100, score))
     
     def _calculate_formatting_score(self, resume: ParsedResume) -> int:
-        """
-        Calculate formatting score - AWARD points, don't deduct
-        
-        Start at 0, award for each element present
-        """
+        """Calculate formatting score - award points for completeness"""
         score = 0
         
-        # Essential sections (40 points possible)
-        if resume.skills and len(resume.skills) >= 3:
+        # Essential sections (40 points)
+        if resume.skills and len(resume.skills) >= 5:
+            score += 20
+        elif resume.skills and len(resume.skills) >= 3:
             score += 15
         elif resume.skills:
             score += 8
         
-        if resume.experience and len(resume.experience) >= 1:
-            score += 15
+        if resume.experience and len(resume.experience) >= 2:
+            score += 20
             # Bonus for detailed experience
             avg_bullets = sum(len(exp.description) for exp in resume.experience) / len(resume.experience)
             if avg_bullets >= 4:
-                score += 10
-            elif avg_bullets >= 2:
                 score += 5
+        elif resume.experience:
+            score += 15
         
-        # Important sections (30 points possible)
+        # Important sections (30 points)
         if resume.summary:
             score += 10
         
@@ -323,7 +313,7 @@ class ATSScorerAgent:
         if resume.phone:
             score += 5
         
-        # Professional extras (30 points possible)
+        # Professional extras (30 points)
         if resume.linkedin:
             score += 10
         
@@ -335,91 +325,102 @@ class ATSScorerAgent:
         
         return min(100, score)
     
+    def _count_relevance_matches(self, exp_text: str, role_keywords: set) -> int:
+        """Count keyword matches using word boundaries"""
+        count = 0
+        for kw in role_keywords:
+            pattern = r'\b' + re.escape(kw) + r'\b'
+            if re.search(pattern, exp_text, re.IGNORECASE):
+                count += 1
+        return count
+    
     def _calculate_experience_score(
         self, 
         resume: ParsedResume, 
         jd: ParsedJobDescription
     ) -> int:
-        """
-        Calculate experience alignment score - checks RELEVANCE
-        
-        Fair scoring even for candidates with 1 strong relevant experience
-        """
+        """Calculate experience alignment score - INTEGER COUNTS ONLY"""
         if not resume.experience:
-            return 20  # Baseline for having resume structure
+            return 20
         
-        # Extract role keywords for relevance checking (more comprehensive)
+        # Extract role keywords
         role_keywords = set()
-        for word in jd.role.lower().split():
-            if len(word) > 2:
-                role_keywords.add(word)
+        if jd.role:
+            for word in jd.role.lower().split():
+                if len(word) > 2:
+                    role_keywords.add(word)
         
-        # Add required skills as keywords
-        for skill in jd.required_skills[:5]:
-            role_keywords.add(skill.lower())
+        if jd.required_skills:
+            for skill in jd.required_skills[:5]:
+                role_keywords.add(skill.lower())
         
-        # Add JD keywords
-        for kw in jd.keywords[:5] if jd.keywords else []:
-            role_keywords.add(kw.lower())
+        if jd.keywords:
+            for kw in jd.keywords[:5]:
+                role_keywords.add(kw.lower())
         
-        # Count relevant experience
-        relevant_exp_count = 0
-        total_relevant_bullets = 0
-        high_relevance_exp = 0
+        # Count relevant experience (INTEGER ONLY - NO FLOATS)
+        high_relevance = 0  # 3+ keyword matches
+        medium_relevance = 0  # 2 keyword matches
+        low_relevance = 0  # 1 keyword match
+        total_bullets = 0
         
         for exp in resume.experience:
             exp_text = f"{exp.title} {exp.company} {' '.join(exp.description)}".lower()
             
-            # Also include skills used in the experience
             if exp.skills_used:
                 exp_text += " " + " ".join(s.lower() for s in exp.skills_used)
             
-            # Check relevance
-            relevance_matches = sum(1 for kw in role_keywords if kw in exp_text)
+            relevance_matches = self._count_relevance_matches(exp_text, role_keywords)
             
             if relevance_matches >= 3:
-                high_relevance_exp += 1
-                relevant_exp_count += 1
-                total_relevant_bullets += len(exp.description)
+                high_relevance += 1
+                total_bullets += len(exp.description)
             elif relevance_matches >= 2:
-                relevant_exp_count += 1
-                total_relevant_bullets += len(exp.description)
+                medium_relevance += 1
+                total_bullets += len(exp.description)
             elif relevance_matches >= 1:
-                relevant_exp_count += 0.5
-                total_relevant_bullets += len(exp.description) // 2
+                low_relevance += 1
+                total_bullets += len(exp.description) // 2
         
-        # Score based on relevant experience
-        # More generous for 1 highly relevant experience
-        if high_relevance_exp >= 1:
-            score = 70  # 1 highly relevant experience is valuable
-        elif relevant_exp_count >= 2:
-            score = 75
-        elif relevant_exp_count >= 1:
-            score = 60  # Bumped up from 55
-        elif len(resume.experience) >= 1:
-            score = 45  # Has experience but not relevant - still gives some credit
+        # Score based on relevance (clearer thresholds)
+        if high_relevance >= 2:
+            score = 80
+        elif high_relevance >= 1:
+            score = 70
+        elif medium_relevance >= 2:
+            score = 65
+        elif medium_relevance >= 1 or low_relevance >= 2:
+            score = 55
+        elif low_relevance >= 1:
+            score = 45
         else:
-            score = 20
+            # Has experience but not relevant
+            score = 35
         
-        # Seniority alignment bonus (more forgiving)
+        # Seniority alignment bonus
         exp_count = len(resume.experience)
         seniority_map = {"entry": 0, "junior": 1, "mid": 2, "senior": 3, "lead": 4, "principal": 5}
         required_exp = seniority_map.get(jd.seniority.value, 2)
         
-        # For mid-level, even 1 relevant experience is acceptable
-        if jd.seniority.value in ["entry", "junior", "mid"]:
+        if jd.seniority.value in ["entry", "junior"]:
             if exp_count >= 1:
                 score += 15
-        elif exp_count >= required_exp:
-            score += 20
-        elif exp_count >= max(1, required_exp - 1):
-            score += 10
+        elif jd.seniority.value == "mid":
+            if exp_count >= 2:
+                score += 15
+            elif exp_count >= 1:
+                score += 10
+        else:
+            if exp_count >= required_exp:
+                score += 15
+            elif exp_count >= max(1, required_exp - 1):
+                score += 8
         
         # Detail bonus
-        if total_relevant_bullets >= 8:
-            score += 10
-        elif total_relevant_bullets >= 4:
+        if total_bullets >= 10:
             score += 5
+        elif total_bullets >= 6:
+            score += 3
         
         return min(100, score)
     
@@ -430,28 +431,59 @@ class ATSScorerAgent:
         skill_details: Dict
     ) -> ATSBucket:
         """
-        Determine ATS bucket - CONSIDERS critical gaps, not just score
-        """
+        Determine ATS bucket - ALIGNED with OUMI classifier expectations
         
+        Bucket Ranges:
+        - STRONG: 80+ (excellent match)
+        - MODERATE: 55-79 (good enough to proceed)
+        - WEAK: 35-54 (significant gaps)
+        - NOT_ATS_FRIENDLY: <35 (poor match)
+        """
         match_rate = skill_details.get("match_rate", 0)
         
-        # CRITICAL FIRST: Missing critical skills = NOT_ATS_FRIENDLY
-        if missing_critical and len(missing_critical) >= 2:
+        # Hard floor: score < 30 is always NOT_ATS_FRIENDLY
+        if score < 30:
             return ATSBucket.NOT_ATS_FRIENDLY
         
-        # If missing 1 critical skill but score is high, cap at MODERATE
-        if missing_critical and len(missing_critical) == 1:
-            if score >= 60:
-                return ATSBucket.MODERATE
-            else:
+        # Critical skill penalties - more lenient thresholds
+        if len(missing_critical) >= 4:
+            # 4+ critical missing = cap at WEAK maximum
+            return ATSBucket.WEAK if score >= 35 else ATSBucket.NOT_ATS_FRIENDLY
+        elif len(missing_critical) >= 3:
+            # 3 critical missing = cap at WEAK, unless score is really high
+            if score >= 70:
+                return ATSBucket.MODERATE  # Allow moderate if other areas strong
+            elif score >= 45:
                 return ATSBucket.WEAK
+            else:
+                return ATSBucket.NOT_ATS_FRIENDLY
+        elif len(missing_critical) == 2:
+            # 2 critical missing = can reach MODERATE
+            if score >= 65:
+                return ATSBucket.MODERATE
+            elif score >= 45:
+                return ATSBucket.WEAK
+            else:
+                return ATSBucket.NOT_ATS_FRIENDLY
+        elif len(missing_critical) == 1:
+            # 1 critical missing = still allow MODERATE (cap at STRONG though)
+            if score >= 80:
+                return ATSBucket.STRONG  # If everything else is great
+            elif score >= 55:
+                return ATSBucket.MODERATE
+            elif score >= 35:
+                return ATSBucket.WEAK
+            else:
+                return ATSBucket.NOT_ATS_FRIENDLY
         
-        # Score + match rate based determination
+        # No critical gaps - score-based determination (more generous)
         if score >= 80 and match_rate >= 0.7:
             return ATSBucket.STRONG
-        elif score >= 60 and match_rate >= 0.5:
+        elif score >= 75 and match_rate >= 0.6:
+            return ATSBucket.STRONG
+        elif score >= 55:  # Lowered from 60
             return ATSBucket.MODERATE
-        elif score >= 40 or match_rate >= 0.3:
+        elif score >= 35:  # Lowered from 40
             return ATSBucket.WEAK
         else:
             return ATSBucket.NOT_ATS_FRIENDLY
@@ -465,31 +497,40 @@ class ATSScorerAgent:
         """Identify specific ATS issues with appropriate severity"""
         issues = []
         
-        # CRITICAL: Missing required skills
+        # CRITICAL: Missing TOP required skills
         missing_required = [s for s in gap_analysis.missing_skills if s.importance == "required"]
-        critical_skills_missing = [s for s in missing_required 
-                                   if s.skill.lower() in jd.required_skills[0:3] if jd.required_skills]
+        top_required = [s.lower() for s in jd.required_skills[:3]] if jd.required_skills else []
+        critical_skills_missing = [s for s in missing_required if s.skill.lower() in top_required]
         
+        # Only mark as CRITICAL if 2+ TOP skills missing
         if len(critical_skills_missing) >= 2:
             issues.append(ATSIssue(
                 category="Skills",
-                issue=f"Missing critical skills: {', '.join(s.skill for s in critical_skills_missing[:3])}",
+                issue=f"Missing {len(critical_skills_missing)} critical required skills: {', '.join(s.skill for s in critical_skills_missing[:3])}",
                 severity="critical",
-                suggestion="These skills are essential for the role. Consider if this position is right for you."
+                suggestion="These are essential skills for this role. Consider if this position aligns with your expertise."
             ))
-        elif len(missing_required) >= 3:
+        elif len(missing_required) >= 4:
+            # Many required skills missing (but not necessarily top ones)
             issues.append(ATSIssue(
                 category="Skills",
                 issue=f"Missing {len(missing_required)} required skills",
                 severity="high",
-                suggestion=f"Add or highlight: {', '.join(s.skill for s in missing_required[:3])}"
+                suggestion=f"Key gaps to address: {', '.join(s.skill for s in missing_required[:4])}"
+            ))
+        elif len(missing_required) >= 2:
+            issues.append(ATSIssue(
+                category="Skills",
+                issue=f"Missing some required skills: {', '.join(s.skill for s in missing_required[:3])}",
+                severity="medium",
+                suggestion="Highlight these skills if you have any relevant experience"
             ))
         elif missing_required:
             issues.append(ATSIssue(
                 category="Skills",
-                issue=f"Missing some required skills: {', '.join(s.skill for s in missing_required)}",
-                severity="medium",
-                suggestion="Mention these skills if you have any experience with them"
+                issue=f"Missing: {missing_required[0].skill}",
+                severity="low",
+                suggestion="Consider adding this skill if applicable"
             ))
         
         # HIGH: Missing contact info
@@ -498,16 +539,16 @@ class ATSScorerAgent:
                 category="Contact",
                 issue="Missing email address",
                 severity="high",
-                suggestion="Add your professional email - recruiters can't contact you without it"
+                suggestion="Add professional email - essential for recruiter contact"
             ))
         
-        # HIGH: No work experience for non-entry roles
+        # HIGH: No experience for non-entry roles
         if not resume.experience and jd.seniority.value not in ["entry"]:
             issues.append(ATSIssue(
                 category="Experience",
                 issue="No work experience listed",
                 severity="high",
-                suggestion="Add relevant work experience, internships, or significant projects"
+                suggestion="Add relevant experience, internships, or major projects"
             ))
         
         # MEDIUM: Missing summary
@@ -516,27 +557,27 @@ class ATSScorerAgent:
                 category="Formatting",
                 issue="Missing professional summary",
                 severity="medium",
-                suggestion="Add a 2-3 sentence summary highlighting your fit for this role"
+                suggestion=f"Add 2-3 sentence summary highlighting {jd.role} experience"
             ))
         
-        # MEDIUM: Sparse experience descriptions
+        # MEDIUM: Sparse descriptions
         if resume.experience:
-            sparse_exp = [exp for exp in resume.experience if len(exp.description) < 2]
-            if len(sparse_exp) >= len(resume.experience) / 2:
+            sparse_count = sum(1 for exp in resume.experience if len(exp.description) < 2)
+            if sparse_count >= len(resume.experience) / 2:
                 issues.append(ATSIssue(
                     category="Experience",
                     issue="Experience descriptions lack detail",
                     severity="medium",
-                    suggestion="Add 3-5 bullet points per position with quantified achievements"
+                    suggestion="Add 3-5 bullet points per role with quantified achievements"
                 ))
         
-        # MEDIUM: Missing keywords
-        if len(gap_analysis.missing_keywords) > len(gap_analysis.matching_keywords):
+        # MEDIUM: Poor keyword coverage
+        if len(gap_analysis.missing_keywords) > len(gap_analysis.matching_keywords) * 1.5:
             issues.append(ATSIssue(
                 category="Keywords",
-                issue=f"Resume missing {len(gap_analysis.missing_keywords)} important keywords",
+                issue=f"Missing {len(gap_analysis.missing_keywords)} important keywords",
                 severity="medium",
-                suggestion=f"Incorporate: {', '.join(gap_analysis.missing_keywords[:5])}"
+                suggestion=f"Incorporate naturally: {', '.join(gap_analysis.missing_keywords[:5])}"
             ))
         
         # LOW: Missing LinkedIn
@@ -545,16 +586,16 @@ class ATSScorerAgent:
                 category="Contact",
                 issue="No LinkedIn profile",
                 severity="low",
-                suggestion="Add LinkedIn URL to boost professional credibility"
+                suggestion="Add LinkedIn URL for professional credibility"
             ))
         
         # LOW: Missing tools
-        if gap_analysis.missing_tools and len(gap_analysis.missing_tools) >= 2:
+        if gap_analysis.missing_tools and len(gap_analysis.missing_tools) >= 3:
             issues.append(ATSIssue(
                 category="Tools",
-                issue=f"Not familiar with: {', '.join(gap_analysis.missing_tools[:3])}",
+                issue=f"Unfamiliar with: {', '.join(gap_analysis.missing_tools[:3])}",
                 severity="low",
-                suggestion="Mention similar tools you've used or consider learning these"
+                suggestion="Mention similar tools or consider gaining exposure"
             ))
         
         return issues
@@ -567,38 +608,41 @@ class ATSScorerAgent:
         issues: List[ATSIssue],
         skill_details: Dict
     ) -> List[str]:
-        """Generate actionable recommendations prioritized by impact"""
+        """Generate prioritized, actionable recommendations"""
         recommendations = []
         
         match_rate = skill_details.get("match_rate", 0)
         
-        # Critical first
-        critical_issues = [i for i in issues if i.severity == "critical"]
-        if critical_issues:
-            recommendations.append(f"⚠️ CRITICAL: {critical_issues[0].suggestion}")
+        # Critical issues first
+        critical = [i for i in issues if i.severity == "critical"]
+        if critical:
+            recommendations.append(f"⚠️ CRITICAL: {critical[0].suggestion}")
         
-        # High priority
-        high_issues = [i for i in issues if i.severity == "high"]
-        for issue in high_issues[:2]:
+        # High priority issues
+        high = [i for i in issues if i.severity == "high"]
+        for issue in high[:2]:
             recommendations.append(f"🔴 {issue.suggestion}")
         
-        # Skill-based recommendations
-        if match_rate < 0.5:
+        # Skill recommendations
+        if match_rate < 0.6:
             missing = skill_details.get("missing_required", [])[:3]
             if missing:
-                recommendations.append(f"📌 Key skills to highlight: {', '.join(missing)}")
+                recommendations.append(f"📌 Priority skills: {', '.join(missing)}")
         
-        # Keywords
+        # Keyword incorporation
         if gap_analysis.missing_keywords:
-            recommendations.append(f"🔑 Add keywords: {', '.join(gap_analysis.missing_keywords[:5])}")
+            top_keywords = gap_analysis.missing_keywords[:5]
+            recommendations.append(f"🔑 Add keywords: {', '.join(top_keywords)}")
         
-        # Summary
+        # Summary recommendation
         if not resume.summary:
-            recommendations.append(f"✍️ Add a professional summary mentioning {jd.role} experience")
+            recommendations.append(f"✍️ Add summary mentioning {jd.role} expertise")
         
-        # General
+        # Positive reinforcement
         if match_rate >= 0.7:
-            recommendations.append("✅ Strong skill match - focus on quantifying achievements")
+            recommendations.append("✅ Strong skill match - focus on quantifying impact")
+        elif match_rate >= 0.5:
+            recommendations.append("📊 Good foundation - strengthen with specific examples")
         
         return recommendations[:6]
 

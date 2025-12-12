@@ -448,6 +448,8 @@ class ResumeWordGenerator:
 def generate_resume_pdf(parsed_resume, rewritten_resume) -> bytes:
     """
     Generate optimized resume PDF from parsed resume and rewritten resume data.
+    Uses LaTeX (Jake's Resume template) for professional one-page formatting.
+    Falls back to ReportLab if LaTeX is not available.
     Returns PDF as bytes.
     """
     # Convert Pydantic models to dicts if needed
@@ -456,9 +458,18 @@ def generate_resume_pdf(parsed_resume, rewritten_resume) -> bytes:
         'rewritten_resume': rewritten_resume.model_dump() if hasattr(rewritten_resume, 'model_dump') else rewritten_resume
     }
     
-    generator = ResumePDFGenerator()
-    buffer = generator.generate(result)
-    return buffer.getvalue()
+    # Try LaTeX generator first (produces better formatting matching Jake's Resume template)
+    try:
+        from .latex_pdf_generator import LaTeXResumeGenerator
+        generator = LaTeXResumeGenerator()
+        buffer = generator.generate(result)
+        return buffer.getvalue()
+    except (RuntimeError, FileNotFoundError, ImportError) as e:
+        logger.warning(f"LaTeX generator unavailable ({str(e)}), falling back to ReportLab")
+        # Fall back to ReportLab
+        generator = ResumePDFGenerator()
+        buffer = generator.generate(result)
+        return buffer.getvalue()
 
 
 def generate_cover_letter_pdf(cover_letter_content: str, candidate_name: str = "Candidate") -> bytes:

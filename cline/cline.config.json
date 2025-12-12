@@ -1,0 +1,63 @@
+{
+  "name": "autoapply-ai",
+  "version": "1.0.0",
+  "description": "Cline configuration for AutoApply AI agent generation",
+  
+  "generator": {
+    "model": "claude-3-opus",
+    "temperature": 0.2,
+    "maxTokens": 4000
+  },
+  
+  "templates": {
+    "agent": {
+      "outputDir": "../backend/agents",
+      "filePattern": "{name}.py",
+      "includes": [
+        "pydantic models",
+        "type hints",
+        "docstrings",
+        "error handling",
+        "CLI support"
+      ]
+    },
+    "endpoint": {
+      "outputDir": "../backend",
+      "filePattern": "routes/{name}.py",
+      "includes": [
+        "FastAPI router",
+        "OpenAPI docs",
+        "validation",
+        "error responses"
+      ]
+    }
+  },
+  
+  "prompts": {
+    "resume_parser": "prompts/resume_parser.md",
+    "jd_analyzer": "prompts/jd_analyzer.md",
+    "ats_scorer": "prompts/ats_scorer.md",
+    "cover_letter": "prompts/cover_letter.md",
+    "fastapi_endpoint": "prompts/fastapi_endpoint.md"
+  },
+  
+  "conventions": {
+    "codeStyle": "black",
+    "docstringFormat": "google",
+    "importOrder": ["stdlib", "thirdparty", "local"],
+    "typeHints": true,
+    "pydanticV2": true
+  },
+  
+  "integrations": {
+    "together_ai": {
+      "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+      "envKey": "TOGETHER_API_KEY"
+    },
+    "kestra": {
+      "namespace": "autoapplyai",
+      "envKey": "KESTRA_API_URL"
+    }
+  }
+}
+
