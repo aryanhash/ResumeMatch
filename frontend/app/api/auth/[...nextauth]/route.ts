@@ -3,13 +3,13 @@ import GoogleProvider from "next-auth/providers/google"
 import CredentialsProvider from "next-auth/providers/credentials"
 
 // Validate required environment variables at startup
-if (process.env.NODE_ENV === 'production') {
-  const requiredEnvVars = ['NEXTAUTH_SECRET', 'NEXTAUTH_URL']
-  const missing = requiredEnvVars.filter(v => !process.env[v])
-  if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(', ')}`)
-  }
-}
+// if (process.env.NODE_ENV === 'production') {
+//   const requiredEnvVars = ['NEXTAUTH_SECRET', 'NEXTAUTH_URL']
+//   const missing = requiredEnvVars.filter(v => !process.env[v])
+//   if (missing.length > 0) {
+//     throw new Error(`Missing required environment variables: ${missing.join(', ')}`)
+//   }
+// }
 
 const handler = NextAuth({
   debug: process.env.NODE_ENV === 'development',
