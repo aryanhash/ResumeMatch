@@ -176,7 +176,7 @@ Be thorough, constructive, and professional. Use emojis only in the estimated ef
             }
         ],
         "temperature": 0.3,
-        "max_tokens": 4000
+        "max_tokens": 1200  # Set to work within free tier credit limits
     }
     
     try:
@@ -207,6 +207,10 @@ def format_review_for_github(review_content: str) -> str:
     # Ensure the header says "Cline Bot" not "CodeRabbit"
     formatted = formatted.replace("Summary by CodeRabbit", "Summary by Cline Bot")
     formatted = formatted.replace("CodeRabbit", "Cline Bot")
+    
+    # Clean problematic Unicode characters that can cause encoding issues
+    # Replace line separator (U+2028) and paragraph separator (U+2029) with standard newlines
+    formatted = formatted.replace('\u2028', '\n').replace('\u2029', '\n\n')
     
     return formatted
 
@@ -246,10 +250,10 @@ def main():
             print(f"Error generating review: {e}", file=sys.stderr)
             review_content = f"⚠️ Error generating review: {str(e)}"
     
-    # Write to output file
+    # Write to output file with explicit UTF-8 encoding
     output_path = Path(output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(review_content)
+    output_path.write_text(review_content, encoding='utf-8')
     
     print(f"Review written to {output_file}", file=sys.stderr)
     print(review_content)
