@@ -15,6 +15,7 @@ from agents.parse_resume import ResumeParserAgent
 
 
 def main():
+    """Main entry point for the resume parsing task"""
     task = BaseTask("parse_resume")
     
     def execute():

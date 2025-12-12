@@ -15,6 +15,7 @@ from models.schemas import ParsedResume, ParsedJobDescription
 
 
 def main():
+    """Main entry point for the gap analysis task"""
     task = BaseTask("gap_analysis")
     
     def execute():

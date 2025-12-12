@@ -260,13 +260,7 @@ class ResumePDFGenerator:
         ))
         return elements
     
-    def _section_header(self, title: str):
-        """Create a section header - returns paragraph with line"""
-        from reportlab.platypus import KeepTogether
-        return Paragraph(
-            f'<u><b>{title}</b></u>',
-            self.styles['SectionHeader']
-        )
+
 
 
 class ResumeWordGenerator:

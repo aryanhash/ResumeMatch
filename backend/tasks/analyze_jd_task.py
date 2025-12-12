@@ -14,6 +14,7 @@ from agents.analyze_jd import JDAnalyzerAgent
 
 
 def main():
+    """Main entry point for the JD analysis task"""
     task = BaseTask("analyze_jd")
     
     def execute():
