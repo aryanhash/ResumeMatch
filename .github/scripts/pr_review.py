@@ -284,9 +284,17 @@ def main():
     output_path.write_text(review_content, encoding='utf-8')
     
     print(f"Review written to {output_file}", file=sys.stderr)
-    print(review_content)
+    
+    # Print with error handling for encoding issues
+    # Extra safety: remove any problematic Unicode characters before printing
+    safe_content = review_content.replace('\u2028', '\n').replace('\u2029', '\n\n')
+    try:
+        print(safe_content)
+    except UnicodeEncodeError as e:
+        # Fallback: print with replace errors to handle any remaining encoding issues
+        print(f"Warning: Encoding error encountered, using fallback encoding: {e}", file=sys.stderr)
+        print(safe_content.encode('utf-8', errors='replace').decode('utf-8'))
 
 
 if __name__ == "__main__":
     main()
-
