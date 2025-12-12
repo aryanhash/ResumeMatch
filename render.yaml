@@ -1,0 +1,19 @@
+services:
+  # Kestra Server
+  - type: web
+    name: kestra-resumematch
+    runtime: docker
+    context: ./kestra
+    dockerfilePath: ./kestra/Dockerfile
+    envVars:
+      - key: KESTRA_ENCRYPTION_KEY
+        generateValue: true
+      - key: TOGETHER_API_KEY
+        sync: false  # User must input this
+    disk:
+      name: kestra-data
+      mountPath: /app/storage
+      sizeGB: 1
+    plan: free
+    region: oregon
+    autoDeploy: false

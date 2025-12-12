@@ -111,7 +111,7 @@ deploy_production() {
         -p ${KESTRA_PORT}:8080 \
         -v "$(pwd)/kestra:/app/flows" \
         -v "$(pwd)/kestra-data:/app/.kestra" \
-        -e KESTRA_CONFIGURATION_FILE=/app/flows/kestra-config.yml \
+        -e MICRONAUT_CONFIG_FILES=/app/flows/kestra-production.yml \
         -e KESTRA_ENCRYPTION_KEY=${KESTRA_ENCRYPTION_KEY} \
         ${KESTRA_IMAGE} \
         server standalone
@@ -205,3 +205,4 @@ case "${1:-local}" in
         exit 1
         ;;
 esac
+

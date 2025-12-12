@@ -392,20 +392,19 @@ vercel
 
 #### **3. Kestra Orchestrator (Optional - if using Kestra)**
 
-**Option A: Deploy on Railway (Same Project)**
-1. In Railway project, click "New Service"
-2. Select "Dockerfile" or use Kestra image
-3. Configure:
-   - **Image**: `kestra/kestra:latest`
-   - **Port**: `8080`
-   - **Command**: `server standalone`
-4. Add volumes for flows (if needed)
+**Option A: Self-hosted with Docker (Recommended)**
+```bash
+# Quick deploy script
+./deploy-kestra.sh local
 
-**Option B: Deploy on Render**
-1. New → Web Service
-2. Use Docker image: `kestra/kestra:latest`
-3. Command: `server standalone`
-4. Port: `8080`
+# Or use docker-compose
+docker-compose up kestra
+```
+
+**Option B: Production Deployment**
+- See detailed guide: [KESTRA_DEPLOYMENT.md](./KESTRA_DEPLOYMENT.md)
+- Supports: Railway, Render, Fly.io, DigitalOcean
+- Includes security, monitoring, and troubleshooting
 
 **Option C: Skip Kestra (Simplified)**
 - If you're not using Kestra workflows, you can skip this
