@@ -254,9 +254,9 @@ npm run dev
 
 ### 4. Access Application
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs
+- **Frontend**: [https://resume-match-khaki.vercel.app/](https://resume-match-khaki.vercel.app/)
+- **Backend API**: https://resumematch-ryyb.onrender.com
+- **API Docs**: https://resumematch-ryyb.onrender.com/docs
 
 ## 🔌 API Endpoints
 
