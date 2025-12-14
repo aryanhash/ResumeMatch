@@ -160,9 +160,9 @@ oumi infer \
 
 **OUMI classifies resumes into:**
 - ✅ Strong (80-100)
-- ⚠️ Moderate (60-79)
-- ⚡ Weak (40-59)
-- ❌ Not ATS-friendly (0-39)
+- ⚠️ Moderate (55-79)
+- ⚡ Weak (35-54)
+- ❌ Not ATS-friendly (0-34)
 
 ### 5️⃣ Vercel — Frontend Deployment
 
